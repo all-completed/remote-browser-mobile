@@ -1,0 +1,155 @@
+/* Keeper dark theme (matches the desktop app's landing-theme tokens) mapped onto
+   Ionic CSS variables. */
+:root {
+  --rb-bg: #070A12;
+  --rb-panel: #0B1220;
+  --rb-panel2: #0F172A;
+  --rb-border: rgba(148, 163, 184, 0.16);
+  --rb-border2: rgba(148, 163, 184, 0.22);
+  --rb-text: #E5E7EB;
+  --rb-muted: #94A3B8;
+  --rb-muted2: #64748B;
+  --rb-primary: #3B82F6;
+  --rb-primary-hi: #60A5FA;
+  --rb-ok: #34D399;
+  --rb-no: #F87171;
+  --rb-chip-bg: rgba(15, 23, 42, 0.55);
+
+  --ion-background-color: #070A12;
+  --ion-background-color-rgb: 7, 10, 18;
+  --ion-text-color: #E5E7EB;
+  --ion-text-color-rgb: 229, 231, 235;
+
+  --ion-color-primary: #3B82F6;
+  --ion-color-primary-rgb: 59, 130, 246;
+  --ion-color-primary-shade: #2f6fd6;
+  --ion-color-primary-tint: #60A5FA;
+  --ion-color-primary-contrast: #EFF6FF;
+  --ion-color-primary-contrast-rgb: 239, 246, 255;
+
+  --ion-toolbar-background: #0B1220;
+  --ion-toolbar-color: #E5E7EB;
+  --ion-tab-bar-background: #0B1220;
+  --ion-item-background: #0B1220;
+  --ion-card-background: #0B1220;
+  --ion-border-color: rgba(148, 163, 184, 0.16);
+}
+
+/* Subtle glow behind content, like the desktop prompt. */
+ion-content {
+  --background:
+    radial-gradient(1100px 380px at 50% -10%, rgba(59, 130, 246, 0.16), transparent 58%),
+    radial-gradient(900px 320px at 0% 35%, rgba(96, 165, 250, 0.08), transparent 52%),
+    #070A12;
+}
+
+.rb-chip {
+  display: inline-block;
+  font-size: 11px;
+  color: var(--rb-muted);
+  padding: 3px 8px;
+  border-radius: 999px;
+  background: var(--rb-chip-bg);
+  border: 1px solid var(--rb-border);
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.rb-chip.url { color: var(--rb-primary-hi); }
+
+.rb-dot { font-size: 12px; vertical-align: middle; }
+.rb-dot.ok { color: var(--rb-ok); }
+.rb-dot.warn { color: #FBBF24; }
+.rb-dot.off { color: var(--rb-muted2); }
+
+.rb-proof img {
+  display: block;
+  width: 100%;
+  max-height: 240px;
+  object-fit: contain;
+  background: var(--rb-panel2);
+  border: 1px solid var(--rb-border2);
+  border-radius: 10px;
+  cursor: zoom-in;
+}
+.rb-proof figcaption {
+  font-size: 11px;
+  color: var(--rb-muted2);
+  margin-top: 6px;
+  text-align: center;
+}
+
+.rb-note {
+  font-size: 12px;
+  color: var(--rb-muted2);
+  line-height: 1.45;
+}
+
+.rb-msg {
+  margin: 0 0 14px;
+  padding: 10px 12px;
+  font-size: 13px;
+  line-height: 1.45;
+  color: var(--rb-text);
+  background: rgba(59, 130, 246, 0.08);
+  border: 1px solid rgba(59, 130, 246, 0.22);
+  border-left: 3px solid var(--rb-primary);
+  border-radius: 10px;
+}
+
+.rb-proof { cursor: zoom-in; }
+
+/* Full-screen prompt overlay (shown when a fill_request arrives). */
+.rb-prompt {
+  position: fixed;
+  inset: 0;
+  z-index: 20000;
+  display: flex;
+  flex-direction: column;
+  background:
+    radial-gradient(1100px 380px at 50% -10%, rgba(59, 130, 246, 0.16), transparent 58%),
+    #070A12;
+}
+.rb-prompt-head {
+  padding: 16px 16px 12px;
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--rb-text);
+  border-bottom: 1px solid var(--rb-border);
+  padding-top: calc(16px + env(safe-area-inset-top));
+}
+.rb-prompt-body {
+  flex: 1;
+  overflow-y: auto;
+  padding: 14px 16px;
+}
+.rb-prompt-foot {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  padding: 10px 12px;
+  padding-bottom: calc(10px + env(safe-area-inset-bottom));
+  border-top: 1px solid var(--rb-border);
+}
+.rb-flabel {
+  display: block;
+  font-size: 12.5px;
+  color: var(--rb-muted);
+  margin: 0 0 6px;
+}
+.rb-inputrow {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+.rb-inputrow .rb-input {
+  flex: 1;
+  --background: var(--rb-panel2);
+  --color: var(--rb-text);
+}
+.rb-hint {
+  font-size: 11px;
+  color: var(--rb-muted2);
+  margin-top: 6px;
+}

@@ -1,0 +1,18 @@
+node_modules/
+www/
+dist/
+*.log
+.DS_Store
+.env
+.env.local
+
+# Capacitor / Android build artifacts
+android/app/build/
+android/build/
+android/.gradle/
+android/local.properties
+android/app/src/main/assets/public/
+android/app/src/main/assets/capacitor.config.json
+android/app/src/main/assets/capacitor.plugins.json
+.idea/
+*.iml

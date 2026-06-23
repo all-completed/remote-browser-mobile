@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">Remote Browser Keeper</string>
+    <string name="title_activity_main">Remote Browser Keeper</string>
+    <string name="package_name">com.allcompleted.rbkeeper</string>
+    <string name="custom_url_scheme">com.allcompleted.rbkeeper</string>
+</resources>
