@@ -2,16 +2,38 @@ import { createContext, useCallback, useContext, useEffect, useRef, useState } f
 import { IonReactRouter } from '@ionic/react-router';
 import { IonIcon, IonLabel, IonRouterOutlet, IonTabBar, IonTabButton, IonTabs } from '@ionic/react';
 import { Redirect, Route } from 'react-router-dom';
-import { homeOutline, settingsOutline, timeOutline } from 'ionicons/icons';
+import { homeOutline, keyOutline, settingsOutline, timeOutline } from 'ionicons/icons';
 import { App as CapApp } from '@capacitor/app';
 
 import { keeper, type ConnState, type FillRequest } from './lib/keeperClient';
 import { keeperWsUrl, loadConfig, type Config } from './lib/config';
 import { saveScreenshot } from './lib/history';
+import { getSaved, hostFromUrl } from './lib/fieldStore';
 import StatusPage from './pages/StatusPage';
 import HistoryPage from './pages/HistoryPage';
 import SettingsPage from './pages/SettingsPage';
+import SavedFieldsPage from './pages/SavedFieldsPage';
 import PromptModal from './components/PromptModal';
+
+const isCard = (field?: string) => String(field || '').toLowerCase().startsWith('card-');
+
+// If every field already has a saved value flagged "fill automatically", answer the
+// request silently without showing the prompt (mirrors the desktop keeper).
+async function tryAutoFill(req: FillRequest, baseUrl: string): Promise<boolean> {
+  const fields = req.fields || [];
+  if (!fields.length || fields.some((f) => isCard(f.field))) return false;
+  const host = hostFromUrl(req.url);
+  const session = req.session_id || '';
+  const out: { selector: string; value: string }[] = [];
+  for (const f of fields) {
+    const s = await getSaved(baseUrl, session, host, f.selector);
+    if (!s || !s.auto || s.value == null) return false;
+    out.push({ selector: f.selector, value: s.value });
+  }
+  keeper.submit(req.request_id, out);
+  if (req.screenshot) void saveScreenshot(req.request_id, req.screenshot);
+  return true;
+}
 
 interface AppCtx {
   config: Config;
@@ -32,10 +54,12 @@ export default function App() {
   const [connState, setConnState] = useState<ConnState>('disconnected');
   const [queue, setQueue] = useState<FillRequest[]>([]);
   const started = useRef(false);
+  const baseUrlRef = useRef(''); // latest base URL for the once-registered request listener
 
   const applyConfig = useCallback(async () => {
     const cfg = await loadConfig();
     setConfig(cfg);
+    baseUrlRef.current = cfg.baseUrl;
     keeper.configure(keeperWsUrl(cfg.baseUrl), cfg.apiKey);
     keeper.disconnect();
     keeper.connect();
@@ -46,7 +70,12 @@ export default function App() {
     started.current = true;
 
     keeper.on('state', setConnState);
-    keeper.on('request', (req) => setQueue((q) => [...q, req]));
+    keeper.on('request', (req) => {
+      void (async () => {
+        if (await tryAutoFill(req, baseUrlRef.current)) return;
+        setQueue((q) => [...q, req]);
+      })();
+    });
     applyConfig();
 
     // Dev-only: lets a web preview inject a simulated fill_request to exercise the
@@ -79,6 +108,7 @@ export default function App() {
       {current && (
         <PromptModal
           request={current}
+          baseUrl={config.baseUrl}
           onSubmit={(values) => finish(current, { values })}
           onCancel={() => finish(current, { cancelled: true })}
         />
@@ -88,6 +118,7 @@ export default function App() {
           <IonRouterOutlet>
             <Route exact path="/status" component={StatusPage} />
             <Route exact path="/history" component={HistoryPage} />
+            <Route exact path="/saved" component={SavedFieldsPage} />
             <Route exact path="/settings" component={SettingsPage} />
             <Route exact path="/">
               <Redirect to="/status" />
@@ -101,6 +132,10 @@ export default function App() {
             <IonTabButton tab="history" href="/history">
               <IonIcon icon={timeOutline} />
               <IonLabel>History</IonLabel>
+            </IonTabButton>
+            <IonTabButton tab="saved" href="/saved">
+              <IonIcon icon={keyOutline} />
+              <IonLabel>Saved</IonLabel>
             </IonTabButton>
             <IonTabButton tab="settings" href="/settings">
               <IonIcon icon={settingsOutline} />
