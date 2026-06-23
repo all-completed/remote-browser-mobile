@@ -2,6 +2,8 @@
 
 A Capacitor + React + Ionic port of the desktop [`remote-browser-keeper`](../remote-browser-keeper).
 
+Repository: **https://github.com/all-completed/remote-browser-mobile** (public).
+
 ## Goal
 
 Passwords and other credentials are **never passed to the AI model**. An agent
@@ -47,6 +49,13 @@ Requires Android Studio + an SDK/emulator. `appId` is `com.allcompleted.rbkeeper
 > Gradle CLI fails with `Unsupported class file major version` if your system
 > `java` is newer than Gradle supports — Android Studio sidesteps this. The
 > `android/` platform and `npx cap sync` work regardless.
+
+### CI
+
+[`.github/workflows/build.yml`](.github/workflows/build.yml) builds the **Android
+debug APK** on every push (ubuntu + JDK 17 + Android SDK → Vite build → `cap sync`
+→ `gradlew assembleDebug`) and uploads it as the `remote-browser-keeper-android`
+artifact. Doc-only pushes are skipped. The signed release build is a future step.
 
 ## Configuration
 
