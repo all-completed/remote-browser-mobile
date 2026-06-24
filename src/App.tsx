@@ -64,7 +64,7 @@ export default function App() {
     setConfig(cfg);
     setConfigLoaded(true);
     baseUrlRef.current = cfg.baseUrl;
-    keeper.configure(keeperWsUrl(cfg.baseUrl), cfg.apiKey);
+    keeper.configure(keeperWsUrl(cfg.baseUrl), cfg.apiKey, cfg.baseUrl);
     keeper.disconnect();
     keeper.connect();
   }, []);

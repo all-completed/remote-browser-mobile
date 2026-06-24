@@ -27,7 +27,10 @@ export default function StatusPage() {
     }
   }, [configLoaded, config.apiKey, router]);
   const label =
-    connState === 'connected' ? 'Connected' : connState === 'reconnecting' ? 'Reconnecting…' : 'Disconnected';
+    connState === 'connected' ? 'Connected'
+    : connState === 'reconnecting' ? 'Reconnecting…'
+    : connState === 'unauthorized' ? 'Authentication failed'
+    : 'Disconnected';
   const cls = connState === 'connected' ? 'ok' : connState === 'reconnecting' ? 'warn' : 'off';
 
   return (
@@ -52,6 +55,15 @@ export default function StatusPage() {
                 <p className="rb-note">No API key set. Pair a device or paste a key in Settings.</p>
                 <IonButton size="small" fill="outline" style={{ marginTop: 10 }} routerLink="/settings">
                   Open Settings
+                </IonButton>
+              </>
+            ) : connState === 'unauthorized' ? (
+              <>
+                <p className="rb-note" style={{ color: 'var(--ion-color-danger, #eb445a)' }}>
+                  The service rejected your API key — it may be wrong or expired. Update it in Settings or re-pair.
+                </p>
+                <IonButton size="small" color="danger" style={{ marginTop: 10 }} routerLink="/settings">
+                  Go to Settings
                 </IonButton>
               </>
             ) : (

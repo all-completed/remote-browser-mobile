@@ -3,6 +3,7 @@
 // user-supplied values back. The token is carried in the WebSocket subprotocol
 // (never the URL). Values are sent only over this authenticated socket — never
 // logged, never exposed to any model.
+import { CapacitorHttp } from '@capacitor/core';
 
 export interface FillField {
   selector: string;
@@ -22,7 +23,8 @@ export interface FillRequest {
   _requested_at?: string;
 }
 
-export type ConnState = 'connected' | 'reconnecting' | 'disconnected';
+// 'unauthorized' = the service rejected the token (wrong/expired key).
+export type ConnState = 'connected' | 'reconnecting' | 'disconnected' | 'unauthorized';
 
 interface Listeners {
   state?: (s: ConnState) => void;
@@ -33,15 +35,18 @@ export class KeeperClient {
   private ws: WebSocket | null = null;
   private wsUrl = '';
   private apiKey = '';
+  private baseUrl = '';
+  private opened = false; // did the current/last socket reach OPEN?
   private backoff = 1000; // ms, capped at 30s
   private reconnectTimer: ReturnType<typeof setTimeout> | null = null;
   private stopped = true;
   state: ConnState = 'disconnected';
   private listeners: Listeners = {};
 
-  configure(wsUrl: string, apiKey: string) {
+  configure(wsUrl: string, apiKey: string, baseUrl = '') {
     this.wsUrl = wsUrl;
     this.apiKey = apiKey;
+    this.baseUrl = baseUrl;
   }
 
   on<K extends keyof Listeners>(key: K, fn: Listeners[K]) {
@@ -64,6 +69,7 @@ export class KeeperClient {
       return;
     }
     this.backoff = 1000; // explicit (re)connect resets backoff
+    this.opened = false;
     this.setState('reconnecting');
     let ws: WebSocket;
     try {
@@ -77,6 +83,7 @@ export class KeeperClient {
 
     ws.onopen = () => {
       if (this.ws !== ws) return; // event from a superseded socket — ignore
+      this.opened = true;
       this.backoff = 1000;
       this.setState('connected');
       this.send({ type: 'hello', app: 'remote-browser-mobile', version: '0.1.0' });
@@ -101,8 +108,16 @@ export class KeeperClient {
     ws.onclose = () => {
       if (this.ws !== ws) return; // a superseded socket closing — don't touch state
       this.ws = null;
-      this.setState('reconnecting');
-      this.scheduleReconnect();
+      if (this.opened) {
+        // Was connected and dropped — ordinary reconnect.
+        this.setState('reconnecting');
+        this.scheduleReconnect();
+      } else {
+        // Never opened: the handshake failed. A browser WebSocket can't read the
+        // HTTP status of a rejected handshake, so probe over HTTP to tell a wrong
+        // token (401/403) apart from a network/server problem.
+        void this.diagnoseFailure();
+      }
     };
     ws.onerror = () => {
       try {
@@ -111,6 +126,31 @@ export class KeeperClient {
         /* ignore */
       }
     };
+  }
+
+  // Probe an authenticated endpoint to classify a failed handshake. 401/403 means
+  // the token is wrong/expired → 'unauthorized' (stop retrying until reconfigured);
+  // anything else is treated as a transient network issue → keep reconnecting.
+  private async diagnoseFailure() {
+    let status = 0;
+    try {
+      const res = await CapacitorHttp.get({
+        url: this.baseUrl.replace(/\/+$/, '') + '/api/sessions/fill-history?limit=1',
+        headers: { Authorization: 'Bearer ' + this.apiKey },
+        connectTimeout: 8000,
+        readTimeout: 8000,
+      });
+      status = res.status;
+    } catch {
+      status = 0; // network/DNS error — not an auth verdict
+    }
+    if (this.stopped || this.ws) return; // superseded by a newer attempt
+    if (status === 401 || status === 403) {
+      this.setState('unauthorized'); // don't hammer the server with a known-bad token
+      return;
+    }
+    this.setState('reconnecting');
+    this.scheduleReconnect();
   }
 
   private scheduleReconnect() {
