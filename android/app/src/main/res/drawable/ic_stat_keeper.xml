@@ -1,0 +1,13 @@
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp"
+    android:height="24dp"
+    android:viewportWidth="24"
+    android:viewportHeight="24"
+    android:tint="#FFFFFF">
+    <!-- Shield silhouette with a keyhole — "keeper is watching". Status-bar icons
+         must be a flat white-on-transparent glyph; Android tints it for the tray. -->
+    <path
+        android:fillColor="#FFFFFF"
+        android:fillType="evenOdd"
+        android:pathData="M12,1L4,4.2V11C4,16 7.4,20.5 12,22C16.6,20.5 20,16 20,11V4.2L12,1ZM12,7.2C13.2,7.2 14.2,8.2 14.2,9.4C14.2,10.3 13.7,11 12.9,11.4L13.6,15.2H10.4L11.1,11.4C10.3,11 9.8,10.3 9.8,9.4C9.8,8.2 10.8,7.2 12,7.2Z" />
+</vector>

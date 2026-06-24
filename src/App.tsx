@@ -6,6 +6,7 @@ import { homeOutline, keyOutline, settingsOutline, timeOutline } from 'ionicons/
 import { App as CapApp } from '@capacitor/app';
 
 import { keeper, type ConnState, type FillRequest } from './lib/keeperClient';
+import { foregroundService } from './lib/foregroundService';
 import { keeperWsUrl, loadConfig, type Config } from './lib/config';
 import { saveScreenshot } from './lib/history';
 import { getSaved, hostFromUrl } from './lib/fieldStore';
@@ -67,6 +68,10 @@ export default function App() {
     keeper.configure(keeperWsUrl(cfg.baseUrl), cfg.apiKey, cfg.baseUrl);
     keeper.disconnect();
     keeper.connect();
+    // Once paired, keep a persistent tray notification (Android) so the Keeper stays
+    // alive in the background and keeps answering requests; drop it when unpaired.
+    if (cfg.baseUrl && cfg.apiKey) void foregroundService.start();
+    else void foregroundService.stop();
   }, []);
 
   useEffect(() => {
@@ -88,12 +93,12 @@ export default function App() {
       (window as any).__injectFill = (req: FillRequest) => setQueue((q) => [...q, req]);
     }
 
-    // Foreground-only: (re)connect when the app becomes active, drop on pause.
+    // Always-on: a foreground service keeps the process alive in the background, so
+    // we stay connected on pause (no disconnect) and only re-assert the socket on
+    // resume as a recovery (e.g. if the OS dropped it during deep Doze).
     const resume = CapApp.addListener('resume', () => keeper.connect());
-    const pause = CapApp.addListener('pause', () => keeper.disconnect());
     return () => {
       resume.then((h) => h.remove());
-      pause.then((h) => h.remove());
     };
   }, [applyConfig]);
 
