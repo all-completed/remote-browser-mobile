@@ -12,6 +12,7 @@ import {
   IonRefresherContent,
   IonTitle,
   IonToolbar,
+  useIonAlert,
   useIonToast,
 } from '@ionic/react';
 import type { RefresherEventDetail } from '@ionic/react';
@@ -23,6 +24,7 @@ import { forgetAll, forgetMeta, listSaved, type SavedMeta } from '../lib/fieldSt
 export default function SavedFieldsPage() {
   const [items, setItems] = useState<SavedMeta[]>([]);
   const [present] = useIonToast();
+  const [presentAlert] = useIonAlert();
 
   const load = async () => {
     setItems(await listSaved());
@@ -32,17 +34,37 @@ export default function SavedFieldsPage() {
     void load();
   }, []);
 
-  const onForget = async (m: SavedMeta) => {
+  // The actual deletes run only after the user approves the confirmation alert.
+  const doForget = async (m: SavedMeta) => {
     await forgetMeta(m);
     await load();
     present({ message: 'Forgotten', duration: 1200, position: 'bottom' });
   };
-
-  const onForgetAll = async () => {
+  const doForgetAll = async () => {
     await forgetAll();
     await load();
     present({ message: 'All saved fields forgotten', duration: 1400, position: 'bottom' });
   };
+
+  const onForget = (m: SavedMeta) =>
+    presentAlert({
+      header: 'Forget saved field?',
+      message: `Forget the saved value for ${m.host}? This can't be undone.`,
+      buttons: [
+        { text: 'Cancel', role: 'cancel' },
+        { text: 'Forget', role: 'destructive', handler: () => void doForget(m) },
+      ],
+    });
+
+  const onForgetAll = () =>
+    presentAlert({
+      header: 'Forget all?',
+      message: `Forget all ${items.length} saved field${items.length === 1 ? '' : 's'}? This can't be undone.`,
+      buttons: [
+        { text: 'Cancel', role: 'cancel' },
+        { text: 'Forget all', role: 'destructive', handler: () => void doForgetAll() },
+      ],
+    });
 
   return (
     <IonPage>
