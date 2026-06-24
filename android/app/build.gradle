@@ -22,6 +22,14 @@ android {
             proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.pro'
         }
     }
+    // Store native libs uncompressed and page-aligned so they can be mmap'd directly
+    // on 16 KB-page devices (Android 15+). Combined with 16 KB-aligned library
+    // versions (see variables.gradle), this clears the ELF alignment warning.
+    packagingOptions {
+        jniLibs {
+            useLegacyPackaging = false
+        }
+    }
 }
 
 repositories {

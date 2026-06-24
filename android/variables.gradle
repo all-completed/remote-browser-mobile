@@ -13,4 +13,15 @@ ext {
     androidxJunitVersion = '1.1.5'
     androidxEspressoCoreVersion = '3.5.1'
     cordovaAndroidVersion = '10.1.1'
+
+    // 16 KB page-size compatible native libs for @capacitor-mlkit/barcode-scanning.
+    // The plugin defaults (CameraX 1.1.0, MLKit 17.2.0) ship .so files whose ELF LOAD
+    // segments aren't 16 KB-aligned, which Android 15 (16 KB pages) warns about. These
+    // newer releases are built with 16 KB alignment. The plugin reads them from ext.
+    androidxCameraCamera2Version = '1.4.1'
+    androidxCameraCoreVersion = '1.4.1'
+    androidxCameraLifecycleVersion = '1.4.1'
+    androidxCameraViewVersion = '1.4.1'
+    mlkitBarcodeScanningVersion = '17.3.0'
+    playServicesCodeScannerVersion = '16.1.0'
 }
