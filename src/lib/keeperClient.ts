@@ -55,11 +55,15 @@ export class KeeperClient {
 
   connect() {
     this.stopped = false;
-    if (this.ws) return;
+    // A socket that's still OPEN/CONNECTING is fine to keep; a CLOSING/CLOSED one
+    // is stale and must not block a fresh attempt (e.g. after resume/reconfigure).
+    if (this.ws && (this.ws.readyState === WebSocket.OPEN || this.ws.readyState === WebSocket.CONNECTING)) return;
+    this.ws = null;
     if (!this.wsUrl || !this.apiKey) {
       this.setState('disconnected');
       return;
     }
+    this.backoff = 1000; // explicit (re)connect resets backoff
     this.setState('reconnecting');
     let ws: WebSocket;
     try {
@@ -72,11 +76,13 @@ export class KeeperClient {
     this.ws = ws;
 
     ws.onopen = () => {
+      if (this.ws !== ws) return; // event from a superseded socket — ignore
       this.backoff = 1000;
       this.setState('connected');
       this.send({ type: 'hello', app: 'remote-browser-mobile', version: '0.1.0' });
     };
     ws.onmessage = (ev) => {
+      if (this.ws !== ws) return;
       let msg: any;
       try {
         msg = JSON.parse(typeof ev.data === 'string' ? ev.data : '');
@@ -93,7 +99,8 @@ export class KeeperClient {
       }
     };
     ws.onclose = () => {
-      if (this.ws === ws) this.ws = null;
+      if (this.ws !== ws) return; // a superseded socket closing — don't touch state
+      this.ws = null;
       this.setState('reconnecting');
       this.scheduleReconnect();
     };

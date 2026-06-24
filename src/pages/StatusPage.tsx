@@ -12,10 +12,9 @@ import {
 import { ellipse } from 'ionicons/icons';
 import { useApp } from '../App';
 import { serviceHost } from '../lib/config';
-import { keeper } from '../lib/keeperClient';
 
 export default function StatusPage() {
-  const { config, connState } = useApp();
+  const { config, connState, reloadConfig } = useApp();
   const host = serviceHost(config.baseUrl);
   const label =
     connState === 'connected' ? 'Connected' : connState === 'reconnecting' ? 'Reconnecting…' : 'Disconnected';
@@ -45,10 +44,7 @@ export default function StatusPage() {
               size="small"
               fill="outline"
               style={{ marginTop: 10 }}
-              onClick={() => {
-                keeper.disconnect();
-                keeper.connect();
-              }}
+              onClick={() => { void reloadConfig(); }}
             >
               Reconnect
             </IonButton>
