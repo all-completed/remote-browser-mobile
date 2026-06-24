@@ -27,6 +27,10 @@ export default function SettingsPage() {
   const [qr, setQr] = useState<string | null>(null);
   const [present] = useIonToast();
 
+  // Sharing this device's QR only makes sense with a usable token — hide it when
+  // the key is absent or the service rejected it (corrupted/expired → unauthorized).
+  const canShare = !!apiKey.trim() && connState !== 'unauthorized';
+
   useEffect(() => {
     loadConfig().then((c) => {
       setBaseUrl(c.baseUrl);
@@ -130,13 +134,17 @@ export default function SettingsPage() {
             <IonIcon slot="start" icon={scanOutline} />
             Scan QR
           </IonButton>
-          <IonButton fill="outline" expand="block" style={{ flex: 1 }} onClick={showQr}>
-            <IonIcon slot="start" icon={qrCodeOutline} />
-            {qr ? 'Hide QR' : 'Show QR'}
-          </IonButton>
+          {/* Only offer to share this device's QR when there's a usable token to share —
+              not when it's missing or the service rejected it (unauthorized). */}
+          {canShare && (
+            <IonButton fill="outline" expand="block" style={{ flex: 1 }} onClick={showQr}>
+              <IonIcon slot="start" icon={qrCodeOutline} />
+              {qr ? 'Hide QR' : 'Show QR'}
+            </IonButton>
+          )}
         </div>
 
-        {qr && (
+        {canShare && qr && (
           <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 10, marginTop: 14 }}>
             <img
               src={qr}
