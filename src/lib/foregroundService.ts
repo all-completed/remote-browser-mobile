@@ -8,6 +8,7 @@ interface KeeperServicePlugin {
   stop(): Promise<void>;
   notifyRequest(opts: { title: string; body: string }): Promise<void>;
   clearAlert(): Promise<void>;
+  setStatus(opts: { text: string }): Promise<void>;
 }
 
 const Native = registerPlugin<KeeperServicePlugin>('KeeperService');
@@ -45,6 +46,15 @@ export const foregroundService = {
     if (!isAndroid()) return;
     try {
       await Native.clearAlert();
+    } catch {
+      /* ignore */
+    }
+  },
+  // Reflect the live keeper connection state in the ongoing notification.
+  async setStatus(text: string): Promise<void> {
+    if (!isAndroid()) return;
+    try {
+      await Native.setStatus({ text });
     } catch {
       /* ignore */
     }

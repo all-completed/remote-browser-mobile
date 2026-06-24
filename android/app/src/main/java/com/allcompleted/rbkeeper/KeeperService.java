@@ -25,10 +25,13 @@ import androidx.core.app.NotificationCompat;
 public class KeeperService extends Service {
     static final String CHANNEL_ID = "keeper_status";
     static final int NOTIFICATION_ID = 4711;
+    // Live connection state shown in the ongoing notification (updated from JS via
+    // the plugin as the keeper socket connects/drops/reconnects).
+    static volatile String sStatusText = "Watching for fill & secret requests";
 
     @Override
     public int onStartCommand(Intent intent, int flags, int startId) {
-        Notification notification = buildNotification();
+        Notification notification = buildNotification(this, sStatusText);
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
             // Android 14+ requires the type to be declared at startForeground time.
             startForeground(NOTIFICATION_ID, notification, ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC);
@@ -40,21 +43,30 @@ public class KeeperService extends Service {
         return START_STICKY;
     }
 
-    private Notification buildNotification() {
-        createChannel();
+    /** Update the ongoing notification's text (e.g. the connection state). */
+    static void updateStatus(Context ctx, String text) {
+        if (text != null && !text.isEmpty()) sStatusText = text;
+        NotificationManager nm = (NotificationManager) ctx.getSystemService(Context.NOTIFICATION_SERVICE);
+        if (nm != null) {
+            nm.notify(NOTIFICATION_ID, buildNotification(ctx, sStatusText));
+        }
+    }
 
-        Intent launch = new Intent(this, MainActivity.class);
+    static Notification buildNotification(Context ctx, String text) {
+        createChannel(ctx);
+
+        Intent launch = new Intent(ctx, MainActivity.class);
         launch.setFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP | Intent.FLAG_ACTIVITY_CLEAR_TOP);
         int piFlags = PendingIntent.FLAG_UPDATE_CURRENT;
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
             piFlags |= PendingIntent.FLAG_IMMUTABLE;
         }
-        PendingIntent contentIntent = PendingIntent.getActivity(this, 0, launch, piFlags);
+        PendingIntent contentIntent = PendingIntent.getActivity(ctx, 0, launch, piFlags);
 
-        return new NotificationCompat.Builder(this, CHANNEL_ID)
+        return new NotificationCompat.Builder(ctx, CHANNEL_ID)
                 .setSmallIcon(R.drawable.ic_stat_keeper)
                 .setContentTitle("Keeper is running")
-                .setContentText("Watching for fill & secret requests")
+                .setContentText(text)
                 .setContentIntent(contentIntent)
                 .setOngoing(true)
                 .setShowWhen(false)
@@ -64,7 +76,7 @@ public class KeeperService extends Service {
                 .build();
     }
 
-    private void createChannel() {
+    static void createChannel(Context ctx) {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             NotificationChannel channel = new NotificationChannel(
                     CHANNEL_ID,
@@ -72,7 +84,7 @@ public class KeeperService extends Service {
                     NotificationManager.IMPORTANCE_LOW);
             channel.setDescription("Shows that the Keeper is running and watching for requests.");
             channel.setShowBadge(false);
-            NotificationManager nm = (NotificationManager) getSystemService(Context.NOTIFICATION_SERVICE);
+            NotificationManager nm = (NotificationManager) ctx.getSystemService(Context.NOTIFICATION_SERVICE);
             if (nm != null) {
                 nm.createNotificationChannel(channel);
             }

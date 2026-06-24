@@ -108,6 +108,13 @@ public class KeeperServicePlugin extends Plugin {
     }
 
     @PluginMethod
+    public void setStatus(PluginCall call) {
+        // Reflect the live connection state in the ongoing foreground notification.
+        KeeperService.updateStatus(getContext(), call.getString("text", ""));
+        call.resolve();
+    }
+
+    @PluginMethod
     public void clearAlert(PluginCall call) {
         NotificationManager nm = (NotificationManager) getContext().getSystemService(Context.NOTIFICATION_SERVICE);
         if (nm != null) nm.cancel(ALERT_NOTIFICATION_ID);

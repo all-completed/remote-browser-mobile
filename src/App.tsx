@@ -78,7 +78,17 @@ export default function App() {
     if (started.current) return;
     started.current = true;
 
-    keeper.on('state', setConnState);
+    keeper.on('state', (s) => {
+      setConnState(s);
+      // Surface the live socket state in the ongoing notification, so the user can
+      // see whether the keeper is actually connected (not just "running").
+      const text =
+        s === 'connected' ? 'Connected · watching for requests'
+        : s === 'reconnecting' ? 'Reconnecting…'
+        : s === 'unauthorized' ? 'Auth failed — open Settings'
+        : 'Disconnected — open the app to reconnect';
+      void foregroundService.setStatus(text);
+    });
     keeper.on('request', (req) => {
       void (async () => {
         if (await tryAutoFill(req, baseUrlRef.current)) return;
