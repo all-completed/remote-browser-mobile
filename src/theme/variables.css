@@ -153,3 +153,9 @@ ion-content {
   color: var(--rb-muted2);
   margin-top: 6px;
 }
+
+/* App-wide: tighter panels — halve the default Material ion-card margin
+   (10px → 5px). Applies to every card list (History, Saved fields, …). */
+ion-card {
+  margin: 5px;
+}
