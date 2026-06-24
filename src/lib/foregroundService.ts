@@ -6,6 +6,8 @@ import { Capacitor, registerPlugin } from '@capacitor/core';
 interface KeeperServicePlugin {
   start(): Promise<void>;
   stop(): Promise<void>;
+  notifyRequest(opts: { title: string; body: string }): Promise<void>;
+  clearAlert(): Promise<void>;
 }
 
 const Native = registerPlugin<KeeperServicePlugin>('KeeperService');
@@ -28,6 +30,23 @@ export const foregroundService = {
       await Native.stop();
     } catch (e) {
       console.warn('[keeper] foreground service stop failed', e);
+    }
+  },
+  // Heads-up notification (sound + vibration) when a request arrives in the background.
+  async notifyRequest(title: string, body: string): Promise<void> {
+    if (!isAndroid()) return;
+    try {
+      await Native.notifyRequest({ title, body });
+    } catch (e) {
+      console.warn('[keeper] notifyRequest failed', e);
+    }
+  },
+  async clearAlert(): Promise<void> {
+    if (!isAndroid()) return;
+    try {
+      await Native.clearAlert();
+    } catch {
+      /* ignore */
     }
   },
 };

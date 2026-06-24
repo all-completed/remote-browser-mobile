@@ -83,6 +83,9 @@ export default function App() {
       void (async () => {
         if (await tryAutoFill(req, baseUrlRef.current)) return;
         setQueue((q) => [...q, req]);
+        // Ping the user (sound + vibration + heads-up) so a backgrounded request
+        // isn't missed; cleared when they answer (see finish()).
+        void foregroundService.notifyRequest('🔐 A session needs a value', req.message || 'Tap to respond in the Keeper');
       })();
     });
     applyConfig();
@@ -109,7 +112,11 @@ export default function App() {
     else keeper.submit(req.request_id, payload.values || []);
     // Cache the proof screenshot locally so History can show it (no values stored).
     if (req.screenshot) void saveScreenshot(req.request_id, req.screenshot);
-    setQueue((q) => q.filter((r) => r.request_id !== req.request_id));
+    setQueue((q) => {
+      const next = q.filter((r) => r.request_id !== req.request_id);
+      if (next.length === 0) void foregroundService.clearAlert(); // no pending prompts left
+      return next;
+    });
   };
 
   return (
