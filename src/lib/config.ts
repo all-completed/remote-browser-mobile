@@ -23,12 +23,14 @@ async function getApiKey(): Promise<string> {
   }
 }
 
-async function setApiKey(value: string): Promise<void> {
+async function setApiKey(value: string): Promise<boolean> {
   try {
     if (value) await SecureStorage.set(SECURE_API_KEY, value);
     else await SecureStorage.remove(SECURE_API_KEY);
+    return true;
   } catch {
-    /* secure storage unavailable (e.g. web preview) — token simply isn't persisted */
+    /* secure storage unavailable (e.g. web preview) — token isn't persisted */
+    return false;
   }
 }
 
@@ -53,11 +55,14 @@ export async function loadConfig(): Promise<Config> {
           baseUrl = c.baseUrl;
           await Preferences.set({ key: URL_KEY, value: baseUrl });
         }
+        // Only drop the plaintext copy once the token is safely in secure storage —
+        // never delete it if the secure write failed (would lose the token).
+        let secured = true;
         if (c.apiKey && !apiKey) {
           apiKey = c.apiKey;
-          await setApiKey(apiKey);
+          secured = await setApiKey(apiKey);
         }
-        await Preferences.remove({ key: LEGACY_KEY }); // drop the plaintext token
+        if (secured) await Preferences.remove({ key: LEGACY_KEY });
       }
     } catch {
       /* nothing to migrate */

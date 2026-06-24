@@ -38,12 +38,14 @@ async function tryAutoFill(req: FillRequest, baseUrl: string): Promise<boolean> 
 interface AppCtx {
   config: Config;
   connState: ConnState;
+  configLoaded: boolean;
   reloadConfig: () => Promise<void>;
 }
 
 const Ctx = createContext<AppCtx>({
   config: { baseUrl: '', apiKey: '' },
   connState: 'disconnected',
+  configLoaded: false,
   reloadConfig: async () => {},
 });
 
@@ -52,6 +54,7 @@ export const useApp = () => useContext(Ctx);
 export default function App() {
   const [config, setConfig] = useState<Config>({ baseUrl: '', apiKey: '' });
   const [connState, setConnState] = useState<ConnState>('disconnected');
+  const [configLoaded, setConfigLoaded] = useState(false);
   const [queue, setQueue] = useState<FillRequest[]>([]);
   const started = useRef(false);
   const baseUrlRef = useRef(''); // latest base URL for the once-registered request listener
@@ -59,6 +62,7 @@ export default function App() {
   const applyConfig = useCallback(async () => {
     const cfg = await loadConfig();
     setConfig(cfg);
+    setConfigLoaded(true);
     baseUrlRef.current = cfg.baseUrl;
     keeper.configure(keeperWsUrl(cfg.baseUrl), cfg.apiKey);
     keeper.disconnect();
@@ -104,7 +108,7 @@ export default function App() {
   };
 
   return (
-    <Ctx.Provider value={{ config, connState, reloadConfig: applyConfig }}>
+    <Ctx.Provider value={{ config, connState, configLoaded, reloadConfig: applyConfig }}>
       {current && (
         <PromptModal
           request={current}
