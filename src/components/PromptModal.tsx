@@ -6,6 +6,7 @@ import {
   fieldInputMode,
   fieldMaxLen,
   formatFieldInput,
+  generatePassword,
   isMultilineField,
   isSecretField,
   shortUrl,
@@ -46,6 +47,20 @@ export default function PromptModal({ request, baseUrl, onSubmit, onCancel }: Pr
     setSaveScope('');
     setSavedExisting(false);
     setDontAsk(false);
+    // Generate fresh strong values for generate-fields; default to saving them.
+    const genInit: Record<string, string> = {};
+    let hasGen = false;
+    for (const f of fields) {
+      if (f.generate && !isCard(f.field)) {
+        genInit[f.selector] = generatePassword(f);
+        hasGen = true;
+      }
+    }
+    if (hasGen) {
+      setValues((m) => ({ ...m, ...genInit }));
+      setSaveScope('forever');
+      setDontAsk(true);
+    }
     let cancelled = false;
     (async () => {
       const prefill: Record<string, string> = {};
@@ -53,7 +68,7 @@ export default function PromptModal({ request, baseUrl, onSubmit, onCancel }: Pr
       let firstAuto = false;
       let any = false;
       for (const f of fields) {
-        if (isCard(f.field)) continue;
+        if (isCard(f.field) || f.generate) continue; // keep generated values
         const s = await getSaved(baseUrl, session, host, f.selector);
         if (s && s.value != null) {
           prefill[f.selector] = formatFieldInput(f.field, f.format, s.value);
@@ -125,11 +140,15 @@ export default function PromptModal({ request, baseUrl, onSubmit, onCancel }: Pr
         )}
 
         {fields.map((f, i) => {
+          const isGen = !!f.generate;
           const secret = isSecretField(f.field);
-          const masked = secret && !reveal[i];
-          const multiline = isMultilineField(f.field, f.format);
+          const masked = secret && !reveal[i] && !isGen; // generated value is shown in clear to review
+          const multiline = isMultilineField(f.field, f.format) && !isGen;
           const ml = fieldMaxLen(f.field, f.length, f.format);
-          const hint = [fieldHint(f.field, f.format), ml ? `max ${ml}` : ''].filter(Boolean).join(' · ');
+          const hint = [
+            isGen ? 'generated in the Keeper — review, then Send' : fieldHint(f.field, f.format),
+            ml ? `max ${ml}` : '',
+          ].filter(Boolean).join(' · ');
           const capitalize = (f.field || '').toLowerCase() === 'card-holder-name' ? 'words' : 'off';
           return (
             <div key={f.selector + i} style={{ marginTop: 14 }}>
@@ -161,10 +180,20 @@ export default function PromptModal({ request, baseUrl, onSubmit, onCancel }: Pr
                     onIonInput={(e) => setVal(f, e.detail.value || '')}
                   />
                 )}
-                {secret && !multiline && (
-                  <IonButton fill="outline" onClick={() => setReveal((r) => ({ ...r, [i]: !r[i] }))} aria-label="Show or hide">
-                    👁
+                {isGen ? (
+                  <IonButton
+                    fill="outline"
+                    onClick={() => setValues((m) => ({ ...m, [f.selector]: generatePassword(f) }))}
+                    aria-label="Generate a new one"
+                  >
+                    ↻
                   </IonButton>
+                ) : (
+                  secret && !multiline && (
+                    <IonButton fill="outline" onClick={() => setReveal((r) => ({ ...r, [i]: !r[i] }))} aria-label="Show or hide">
+                      👁
+                    </IonButton>
+                  )
                 )}
               </div>
               {hint && <div className="rb-hint">{hint}</div>}

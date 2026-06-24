@@ -25,6 +25,22 @@ export function isSecretField(field?: string): boolean {
   );
 }
 
+// Generate a strong value in the Keeper (never produced by the agent). Honors a
+// numeric format and an optional length; defaults to 20 chars of an unambiguous set.
+export function generatePassword(field?: { length?: number; format?: string }): string {
+  const f = field || {};
+  const numeric = isNumericFormat(f.format);
+  const charset = numeric
+    ? '0123456789'
+    : 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnpqrstuvwxyz23456789!@#$%^&*-_=+';
+  const len = Number.isInteger(f.length) && (f.length as number) > 0 ? Math.min(f.length as number, 64) : 20;
+  const arr = new Uint32Array(len);
+  (globalThis.crypto || (window as any).crypto).getRandomValues(arr);
+  let out = '';
+  for (let i = 0; i < len; i++) out += charset[arr[i] % charset.length];
+  return out;
+}
+
 export function isNumericFormat(format?: string): boolean {
   const f = (format || '').toLowerCase();
   return f === 'numeric' || f === 'digits' || f === 'number';

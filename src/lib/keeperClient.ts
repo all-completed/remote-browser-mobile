@@ -11,6 +11,7 @@ export interface FillField {
   field?: string; // password | code | login | email | text
   length?: number;
   format?: string;
+  generate?: boolean; // Keeper generates a strong value for this field (e.g. new password)
 }
 
 export interface FillRequest {
