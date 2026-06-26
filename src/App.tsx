@@ -7,6 +7,7 @@ import { App as CapApp } from '@capacitor/app';
 
 import { keeper, type ConnState, type FillRequest } from './lib/keeperClient';
 import { foregroundService } from './lib/foregroundService';
+import { initPush } from './lib/push';
 import { keeperWsUrl, loadConfig, type Config } from './lib/config';
 import { saveScreenshot } from './lib/history';
 import { getSaved, hostFromUrl } from './lib/fieldStore';
@@ -99,6 +100,14 @@ export default function App() {
       })();
     });
     applyConfig();
+
+    // Register for FCM so the service can wake us with a content-free push when a
+    // request lands while we're deep-backgrounded. The token rides over the WS; a
+    // wake (received or tapped) just re-asserts the socket so replay delivers it.
+    void initPush(
+      (token) => keeper.setFcmToken(token),
+      () => keeper.connect(),
+    );
 
     // Dev-only: lets a web preview inject a simulated fill_request to exercise the
     // prompt UI without a live connection. Stripped from production builds.

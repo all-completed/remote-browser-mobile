@@ -41,6 +41,7 @@ export class KeeperClient {
   private backoff = 1000; // ms, capped at 30s
   private reconnectTimer: ReturnType<typeof setTimeout> | null = null;
   private stopped = true;
+  private fcmToken = ''; // FCM device token; re-sent over the WS on every connect
   state: ConnState = 'disconnected';
   private listeners: Listeners = {};
 
@@ -88,6 +89,7 @@ export class KeeperClient {
       this.backoff = 1000;
       this.setState('connected');
       this.send({ type: 'hello', app: 'remote-browser-mobile', version: '0.1.0' });
+      this.sendFcmToken(); // (re)register the device for wake-pushes on this fresh socket
     };
     ws.onmessage = (ev) => {
       if (this.ws !== ws) return;
@@ -191,6 +193,18 @@ export class KeeperClient {
     } catch {
       /* ignore */
     }
+  }
+
+  // Register this device's FCM token so the service can send a content-free wake-push
+  // when a request arrives while the app is deep-backgrounded. The token only enables
+  // a "doorbell"; the actual request still flows over this authenticated socket.
+  setFcmToken(token: string) {
+    this.fcmToken = token || '';
+    this.sendFcmToken();
+  }
+
+  private sendFcmToken() {
+    if (this.fcmToken) this.send({ type: 'fcm_token', token: this.fcmToken });
   }
 
   submit(requestId: string, values: { selector: string; value: string }[]) {

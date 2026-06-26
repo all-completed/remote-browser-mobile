@@ -16,3 +16,7 @@ android/app/src/main/assets/capacitor.config.json
 android/app/src/main/assets/capacitor.plugins.json
 .idea/
 *.iml
+
+# Firebase config — carries the Firebase Android API key; injected in CI from the
+# GOOGLE_SERVICES_JSON secret (this repo is public). Keep it local-only.
+android/app/google-services.json
