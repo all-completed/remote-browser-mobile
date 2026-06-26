@@ -4,8 +4,11 @@ The launcher icon — a gold key-in-shield inside a browser window on a royal-bl
 gradient — representing the Keeper as a guardian that delivers secrets safely into a
 remote browser.
 
-- `emblem-source-transparent.png` — the emblem on transparent bg, generated with
-  OpenAI `gpt-image-1`.
+- `icon.svg` — the canonical hand-authored vector; the desktop keeper renders its
+  icns/ico/png from this file. Edit here to change the mark everywhere.
+- `originals/` — the raw, unmodified OpenAI `gpt-image-1` generations:
+  `gpt-image-gen1.png` (first variant) and `gpt-image-gen2-chosen.png` (the one used).
+- `emblem-source-transparent.png` — the chosen emblem on transparent bg (= gen2).
 - `icon-1024.png` — full legacy/master icon (emblem composited on the blue gradient).
 - `icon-foreground-1024.png` — adaptive-icon foreground (emblem, transparent, padded
   into the safe zone).
