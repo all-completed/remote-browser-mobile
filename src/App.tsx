@@ -99,6 +99,15 @@ export default function App() {
         void foregroundService.notifyRequest('🔐 A session needs a value', req.message || 'Tap to respond in the Keeper');
       })();
     });
+    keeper.on('resolved', (requestId) => {
+      // Another keeper (desktop/other phone) answered this, or it timed out — drop it
+      // from our queue without responding, so we don't ask the user for it too.
+      setQueue((q) => {
+        const next = q.filter((r) => r.request_id !== requestId);
+        if (next.length === 0) void foregroundService.clearAlert();
+        return next;
+      });
+    });
     applyConfig();
 
     // Register for FCM so the service can wake us with a content-free push when a

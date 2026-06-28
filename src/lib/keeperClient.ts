@@ -30,6 +30,7 @@ export type ConnState = 'connected' | 'reconnecting' | 'disconnected' | 'unautho
 interface Listeners {
   state?: (s: ConnState) => void;
   request?: (r: FillRequest) => void;
+  resolved?: (requestId: string) => void; // request resolved elsewhere → dismiss prompt
 }
 
 export class KeeperClient {
@@ -106,6 +107,11 @@ export class KeeperClient {
       if (msg.type === 'fill_request' && msg.request_id) {
         msg._requested_at = new Date().toISOString();
         this.listeners.request?.(msg as FillRequest);
+        return;
+      }
+      // Another keeper (or a timeout) resolved this request — drop our prompt for it.
+      if (msg.type === 'request_resolved' && msg.request_id) {
+        this.listeners.resolved?.(String(msg.request_id));
       }
     };
     ws.onclose = () => {
