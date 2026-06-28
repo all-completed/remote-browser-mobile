@@ -175,6 +175,22 @@ export class KeeperClient {
     }, this.backoff);
   }
 
+  // Force a brand-new socket. Used on an FCM wake from deep background: the existing
+  // socket is usually a zombie — readyState still OPEN, but the server couldn't reach
+  // us (that's why it pushed), so connect() alone would short-circuit and the server's
+  // pending-request replay would never run. Tear the old socket down and reconnect.
+  reconnect() {
+    this.stopped = false;
+    const old = this.ws;
+    this.ws = null; // so connect()'s "already OPEN/CONNECTING" guard doesn't bail
+    try {
+      old?.close();
+    } catch {
+      /* ignore */
+    }
+    this.connect();
+  }
+
   disconnect() {
     this.stopped = true;
     if (this.reconnectTimer) {

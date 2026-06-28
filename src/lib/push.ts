@@ -33,7 +33,10 @@ async function ensureAlertChannel(): Promise<void> {
   }
 }
 
-export async function initPush(onToken: (token: string) => void, onWake: () => void): Promise<void> {
+// onWake(force): force=true means we were in the background/killed (the socket is
+// likely a zombie → caller should force a fresh reconnect); force=false means the app
+// was alive when the wake arrived (a gentle connect() is enough).
+export async function initPush(onToken: (token: string) => void, onWake: (force: boolean) => void): Promise<void> {
   if (Capacitor.getPlatform() !== 'android') return;
   try {
     await ensureAlertChannel();
@@ -42,10 +45,11 @@ export async function initPush(onToken: (token: string) => void, onWake: () => v
     await PushNotifications.addListener('registrationError', () => {
       /* no token this run; WS still works, just no background wake */
     });
-    // App alive when the wake arrives — just re-assert the socket; replay delivers.
-    await PushNotifications.addListener('pushNotificationReceived', () => onWake());
-    // User tapped the heads-up from background/killed — open + reconnect.
-    await PushNotifications.addListener('pushNotificationActionPerformed', () => onWake());
+    // App alive when the wake arrives — a gentle re-assert is enough.
+    await PushNotifications.addListener('pushNotificationReceived', () => onWake(false));
+    // User tapped the heads-up from background/killed — the socket is likely a zombie,
+    // so force a fresh reconnect to trigger the server's pending-request replay.
+    await PushNotifications.addListener('pushNotificationActionPerformed', () => onWake(true));
 
     let receive = (await PushNotifications.checkPermissions()).receive;
     if (receive === 'prompt' || receive === 'prompt-with-rationale') {

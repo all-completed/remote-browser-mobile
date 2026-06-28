@@ -94,7 +94,15 @@ export default function App() {
     keeper.on('request', (req) => {
       void (async () => {
         if (await tryAutoFill(req, baseUrlRef.current)) return;
-        setQueue((q) => [...q, req]);
+        let added = false;
+        setQueue((q) => {
+          // Dedup: the server replays still-pending requests on every (re)connect, so
+          // the same request_id can arrive again — don't enqueue/alert twice.
+          if (q.some((r) => r.request_id === req.request_id)) return q;
+          added = true;
+          return [...q, req];
+        });
+        if (!added) return;
         // Ping the user (sound + vibration + heads-up) so a backgrounded request
         // isn't missed; cleared when they answer (see finish()).
         void foregroundService.notifyRequest('🔐 A session needs a value', req.message || 'Tap to respond in the Keeper');
@@ -116,7 +124,9 @@ export default function App() {
     // wake (received or tapped) just re-asserts the socket so replay delivers it.
     void initPush(
       (token) => keeper.setFcmToken(token),
-      () => keeper.connect(),
+      // Background wake (force) → fresh reconnect so the server replays pending requests;
+      // foreground wake → a gentle connect() is enough.
+      (force) => (force ? keeper.reconnect() : keeper.connect()),
     );
 
     // Dev-only: lets a web preview inject a simulated fill_request to exercise the
@@ -128,7 +138,7 @@ export default function App() {
     // Always-on: a foreground service keeps the process alive in the background, so
     // we stay connected on pause (no disconnect) and only re-assert the socket on
     // resume as a recovery (e.g. if the OS dropped it during deep Doze).
-    const resume = CapApp.addListener('resume', () => keeper.connect());
+    const resume = CapApp.addListener('resume', () => keeper.reconnect());
     return () => {
       resume.then((h) => h.remove());
     };
