@@ -4,6 +4,7 @@
 // against the server list.
 import { CapacitorHttp } from '@capacitor/core';
 import { Filesystem, Directory } from '@capacitor/filesystem';
+import { Preferences } from '@capacitor/preferences';
 
 export interface HistoryField {
   selector?: string;
@@ -43,6 +44,36 @@ export async function fetchHistory(baseUrl: string, apiKey: string, limit = 200)
 
 function safeId(id: string): string | null {
   return /^[A-Za-z0-9_-]{1,128}$/.test(id) ? id : null;
+}
+
+// The server history only knows a request was "filled" — it can't tell a silent
+// auto-fill from a manual one. So we remember locally which requests THIS device
+// auto-filled, and the History page relabels those as "autofilled" (matching the
+// desktop keeper). Values are never involved — just request_ids.
+const AUTOFILLED_KEY = 'autofilled_request_ids';
+const AUTOFILLED_MAX = 500;
+
+export async function markAutofilled(requestId: string): Promise<void> {
+  const id = safeId(requestId);
+  if (!id) return;
+  try {
+    const ids = await getAutofilledIds();
+    if (ids.has(id)) return;
+    const arr = [...ids, id].slice(-AUTOFILLED_MAX); // cap, keep most recent
+    await Preferences.set({ key: AUTOFILLED_KEY, value: JSON.stringify(arr) });
+  } catch {
+    /* best effort */
+  }
+}
+
+export async function getAutofilledIds(): Promise<Set<string>> {
+  try {
+    const { value } = await Preferences.get({ key: AUTOFILLED_KEY });
+    const arr = value ? JSON.parse(value) : [];
+    return new Set(Array.isArray(arr) ? arr : []);
+  } catch {
+    return new Set();
+  }
 }
 
 /** Persist the proof screenshot (data URL) for a request on this device. */

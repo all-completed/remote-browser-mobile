@@ -9,7 +9,7 @@ import { keeper, type ConnState, type FillRequest } from './lib/keeperClient';
 import { foregroundService } from './lib/foregroundService';
 import { initPush } from './lib/push';
 import { keeperWsUrl, loadConfig, type Config } from './lib/config';
-import { saveScreenshot } from './lib/history';
+import { markAutofilled, saveScreenshot } from './lib/history';
 import { getSaved, hostFromUrl } from './lib/fieldStore';
 import StatusPage from './pages/StatusPage';
 import HistoryPage from './pages/HistoryPage';
@@ -33,6 +33,7 @@ async function tryAutoFill(req: FillRequest, baseUrl: string): Promise<boolean> 
     out.push({ selector: f.selector, value: s.value });
   }
   keeper.submit(req.request_id, out);
+  void markAutofilled(req.request_id); // so History labels this "autofilled" (green)
   if (req.screenshot) void saveScreenshot(req.request_id, req.screenshot);
   return true;
 }

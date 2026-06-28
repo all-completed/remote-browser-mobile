@@ -17,12 +17,13 @@ import {
 } from '@ionic/react';
 import type { RefresherEventDetail } from '@ionic/react';
 import { useApp } from '../App';
-import { fetchHistory, readScreenshot, reconcileScreenshots, type HistoryItem } from '../lib/history';
+import { fetchHistory, getAutofilledIds, readScreenshot, reconcileScreenshots, type HistoryItem } from '../lib/history';
 import { fmtTime, shortUrl } from '../lib/format';
 import ImageModal from '../components/ImageModal';
 
 const STATUS_COLOR: Record<string, string> = {
   filled: 'success',
+  autofilled: 'success', // keeper filled it silently — a success, like the desktop
   pending: 'primary',
   cancelled: 'warning',
   timeout: 'warning',
@@ -36,6 +37,7 @@ export default function HistoryPage() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [zoom, setZoom] = useState<string | null>(null);
+  const [autoIds, setAutoIds] = useState<Set<string>>(new Set());
   const [present] = useIonToast();
 
   const load = async () => {
@@ -46,6 +48,7 @@ export default function HistoryPage() {
     setLoading(true);
     setError('');
     try {
+      setAutoIds(await getAutofilledIds());
       const list = await fetchHistory(config.baseUrl, config.apiKey);
       setItems(list);
       void reconcileScreenshots(new Set(list.map((i) => i.request_id)));
@@ -99,11 +102,13 @@ export default function HistoryPage() {
 
         {items.map((it, i) => {
           const names = (it.fields || []).map((f) => f.label || f.field || f.selector || 'field');
+          // The server reports "filled" for a silent auto-fill too; relabel ours.
+          const label = it.status === 'filled' && autoIds.has(it.request_id) ? 'autofilled' : it.status || 'unknown';
           return (
             <IonCard key={it.request_id || i}>
               <IonCardContent>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-                  <IonChip color={STATUS_COLOR[it.status || ''] || 'medium'}>{it.status || 'unknown'}</IonChip>
+                  <IonChip color={STATUS_COLOR[label] || 'medium'}>{label}</IonChip>
                   {it.session_id && <span className="rb-chip">session: {it.session_id}</span>}
                   <span style={{ marginLeft: 'auto', fontSize: 12, color: 'var(--rb-muted)' }}>
                     {fmtTime(it.created_at)}
