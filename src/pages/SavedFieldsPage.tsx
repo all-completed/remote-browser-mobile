@@ -104,7 +104,7 @@ export default function SavedFieldsPage() {
             <IonCard key={m.baseUrl + '|' + m.session + '|' + m.host + '|' + m.selector + '|' + i}>
               <IonCardContent>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-                  <IonChip color={m.scope === 'forever' ? 'success' : 'medium'}>
+                  <IonChip color={m.scope === 'forever' ? 'success' : 'warning'}>
                     {m.scope === 'forever' ? 'on this device' : 'until restart'}
                   </IonChip>
                   {m.auto && <IonChip color="primary">auto-fill</IonChip>}
