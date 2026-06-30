@@ -153,6 +153,14 @@ export default function PromptModal({ request, baseUrl, onSubmit, onCancel }: Pr
           return (
             <div key={f.selector + i} style={{ marginTop: 14 }}>
               <label className="rb-flabel">{f.label || 'Enter value'}</label>
+              {f.selector && (
+                <div
+                  title="The exact element the service will fill"
+                  style={{ fontFamily: 'ui-monospace, monospace', fontSize: 11.5, color: 'var(--rb-muted)', wordBreak: 'break-all', margin: '1px 0 3px' }}
+                >
+                  {f.selector}
+                </div>
+              )}
               <div className="rb-inputrow">
                 {multiline ? (
                   <IonTextarea
