@@ -35,7 +35,10 @@ export function hostFromUrl(u?: string): string {
 }
 
 function keyOf(baseUrl: string, session: string, host: string, selector: string): string {
-  return `${baseUrl || ''}|${session || ''}|${host}|${selector}`;
+  // Trim session + selector so incidental whitespace in the agent-supplied selector
+  // can't hash the same field to a second key (which both duplicates the saved-fields
+  // entry and makes auto-fill miss → re-prompt → re-save).
+  return `${baseUrl || ''}|${(session || '').trim()}|${host}|${(selector || '').trim()}`;
 }
 
 function parseKey(k: string): { baseUrl: string; session: string; host: string; selector: string } | null {
@@ -121,16 +124,19 @@ export async function forget(baseUrl: string, session: string, host: string, sel
 
 // All saved entries (metadata only — NEVER the value) for the management screen.
 export async function listSaved(): Promise<SavedMeta[]> {
-  const out: SavedMeta[] = [];
-  for (const [k, e] of memory.entries()) {
+  // Dedup by normalized session|host|selector so the same field never shows twice;
+  // a persisted "forever" entry wins over an in-memory "session" one.
+  const byKey = new Map<string, SavedMeta>();
+  const add = (k: string, scope: 'session' | 'forever', auto: boolean) => {
     const p = parseKey(k);
-    if (p) out.push({ ...p, scope: 'session', auto: !!e.auto });
-  }
+    if (!p) return;
+    const norm = `${p.session.trim()}|${p.host}|${p.selector.trim()}`;
+    if (scope === 'forever' || !byKey.has(norm)) byKey.set(norm, { ...p, scope, auto });
+  };
+  for (const [k, e] of memory.entries()) add(k, 'session', !!e.auto);
   const persisted = await loadPersisted();
-  for (const k of Object.keys(persisted)) {
-    const p = parseKey(k);
-    if (p) out.push({ ...p, scope: 'forever', auto: !!persisted[k].auto });
-  }
+  for (const k of Object.keys(persisted)) add(k, 'forever', !!persisted[k].auto);
+  const out: SavedMeta[] = [...byKey.values()];
   return out;
 }
 
