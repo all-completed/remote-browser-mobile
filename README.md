@@ -55,7 +55,23 @@ Requires Android Studio + an SDK/emulator. `appId` is `com.allcompleted.rbkeeper
 [`.github/workflows/build.yml`](.github/workflows/build.yml) builds the **Android
 debug APK** on every push (ubuntu + JDK 17 + Android SDK → Vite build → `cap sync`
 → `gradlew assembleDebug`) and uploads it as the `remote-browser-keeper-android`
-artifact. Doc-only pushes are skipped. The signed release build is a future step.
+artifact. Doc-only pushes are skipped.
+
+### Install & auto-update on your phone (Obtainium)
+
+[`.github/workflows/release.yml`](.github/workflows/release.yml) additionally
+publishes the APK to a rolling **`latest`** GitHub Release on every push to `main`,
+so [Obtainium](https://github.com/ImranR98/Obtainium) can install and **auto-update**
+the app in place — no Play Store, no manual reinstall.
+
+- The APK is signed with the repo's **committed `debug.keystore`** (this project
+  commits it on purpose so every build shares a signature and updates don't wipe
+  the on-device token), so no signing secrets are needed.
+- `versionCode` is bumped to the CI run number so Obtainium detects each new build.
+
+**Set up Obtainium once:** Add app → URL `https://github.com/all-completed/remote-browser-mobile`
+(public repo, no token needed) → it tracks the `latest` release; install once, then
+every push to `main` offers a one-tap update.
 
 ## Configuration
 

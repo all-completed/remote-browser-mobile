@@ -1,0 +1,83 @@
+name: release-apk
+
+# Build the Android APK and publish it to a rolling "latest" GitHub Release, so
+# Obtainium (on the phone) can install and auto-update the app straight from here.
+#
+# The APK is signed with the repo's committed debug.keystore (the project commits
+# it on purpose — see android/app/build.gradle — so every build shares a signature
+# and updates install in place without wiping the on-device token). versionCode is
+# bumped per run so Obtainium sees each build as newer.
+#
+# No signing secrets needed (keystore is in the repo). Firebase/FCM config is
+# injected from the GOOGLE_SERVICES_JSON secret, same as build.yml.
+
+on:
+  push:
+    branches: [main]
+    paths-ignore:
+      - "**.md"
+      - "LICENSE"
+  workflow_dispatch:
+
+permissions:
+  contents: write        # to create/update the GitHub Release
+
+concurrency:
+  group: release-${{ github.ref_name }}
+  cancel-in-progress: true
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Write google-services.json (FCM)
+        env:
+          GOOGLE_SERVICES_JSON: ${{ secrets.GOOGLE_SERVICES_JSON }}
+        run: |
+          if [ -n "$GOOGLE_SERVICES_JSON" ]; then
+            echo "$GOOGLE_SERVICES_JSON" | base64 -d > android/app/google-services.json
+          else
+            echo "::warning::GOOGLE_SERVICES_JSON secret not set — building without FCM/push."
+          fi
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+      - uses: android-actions/setup-android@v3
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+
+      - name: Install deps + build web + cap sync
+        run: |
+          npm ci
+          npm run build
+          npx cap sync android
+
+      - name: Build signed APK (versionCode bumped)
+        working-directory: android
+        run: |
+          chmod +x ./gradlew
+          ./gradlew assembleDebug --no-daemon --stacktrace \
+            -PversionCode=${GITHUB_RUN_NUMBER} \
+            -PversionName="1.0.${GITHUB_RUN_NUMBER}"
+
+      - name: Stage APK
+        run: |
+          mkdir -p out
+          cp android/app/build/outputs/apk/debug/app-debug.apk \
+             out/remote-browser-keeper-${GITHUB_RUN_NUMBER}.apk
+
+      - name: Publish to rolling "latest" GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release delete latest --repo "$GITHUB_REPOSITORY" --cleanup-tag --yes 2>/dev/null || true
+          gh release create latest out/remote-browser-keeper-${GITHUB_RUN_NUMBER}.apk \
+            --repo "$GITHUB_REPOSITORY" \
+            --title "Remote Browser Keeper (latest)" \
+            --notes "APK · build ${GITHUB_RUN_NUMBER} · commit ${GITHUB_SHA}"
