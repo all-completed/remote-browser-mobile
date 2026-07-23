@@ -7,24 +7,27 @@ import QRCode from 'qrcode';
 export interface PairConfig {
   baseUrl: string;
   apiKey: string;
+  secret?: string; // optional session vault key (present when the desktop holds one)
 }
 
 const APP_TAG = 'rbkeeper';
 
 export function buildPayload(cfg: PairConfig): string {
-  return JSON.stringify({ app: APP_TAG, v: 1, url: cfg.baseUrl, key: cfg.apiKey });
+  return JSON.stringify({ app: APP_TAG, v: 1, url: cfg.baseUrl, key: cfg.apiKey, ...(cfg.secret ? { secret: cfg.secret } : {}) });
 }
 
 export async function makeQrDataUrl(cfg: PairConfig): Promise<string> {
   return QRCode.toDataURL(buildPayload(cfg), { margin: 1, scale: 8, errorCorrectionLevel: 'M' });
 }
 
-// Parse a scanned payload back into a config, or null if it isn't ours.
+// Parse a scanned payload back into a config, or null if it isn't ours. A `secret`,
+// when the desktop included one, is carried through so the synced vault can be
+// decrypted on this device.
 export function parsePayload(text: string): PairConfig | null {
   try {
     const o = JSON.parse(text);
     if (o && o.app === APP_TAG && typeof o.url === 'string' && typeof o.key === 'string') {
-      return { baseUrl: o.url, apiKey: o.key };
+      return { baseUrl: o.url, apiKey: o.key, ...(typeof o.secret === 'string' && o.secret ? { secret: o.secret } : {}) };
     }
   } catch {
     /* not our payload */

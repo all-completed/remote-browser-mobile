@@ -16,7 +16,7 @@ import {
 import { qrCodeOutline, scanOutline } from 'ionicons/icons';
 import { IonIcon } from '@ionic/react';
 import { useApp } from '../App';
-import { loadConfig, saveConfig } from '../lib/config';
+import { loadConfig, loadSecret, saveConfig } from '../lib/config';
 import { makeQrDataUrl, parsePayload } from '../lib/pair';
 import { canScan, scanQr } from '../lib/scan';
 
@@ -55,7 +55,8 @@ export default function SettingsPage() {
       return;
     }
     try {
-      setQr(await makeQrDataUrl({ baseUrl, apiKey }));
+      const secret = await loadSecret(); // re-share the vault key too, if we hold one
+      setQr(await makeQrDataUrl({ baseUrl, apiKey, secret: secret || undefined }));
     } catch (e: any) {
       present({ message: 'Could not build QR: ' + (e?.message || e), duration: 2000, position: 'bottom' });
     }

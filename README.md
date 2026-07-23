@@ -23,6 +23,15 @@ The model only ever learns the request *status*, never the value.
 - **History** lists past requests (status + field metadata only — never values)
   from `GET /api/sessions/fill-history`; proof screenshots are cached locally and
   can be opened full-size.
+- **Saved fields** can be kept in three scopes: *until the app restarts* (memory),
+  *keep on this device* (`@capacitor/preferences`), or **Save to vault (synced
+  across devices)** — end-to-end encrypted with the session `secret` and synced to
+  every paired Keeper through `…/api/vault`. The service stores only opaque
+  ciphertext and holds no key (see the service repo `docs/vault-sync.md`). The vault
+  blob is byte-for-byte interoperable with the desktop Keeper (AES-256-GCM, key =
+  `sha256(secret)`, `format = aesgcm-sha256-v1`); the session secret is provisioned
+  by the desktop **pair QR**. `src/lib/vaultCrypto.ts` (WebCrypto) + `src/lib/vault.ts`
+  (sync); `test/vault-interop.test.mjs` proves cross-device interop (`npm test`).
 
 See [`../remote-browser-service/docs/keeper-protocol.md`](../remote-browser-service/docs/keeper-protocol.md)
 for the wire protocol.

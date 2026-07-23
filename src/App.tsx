@@ -10,7 +10,8 @@ import { foregroundService } from './lib/foregroundService';
 import { initPush } from './lib/push';
 import { keeperWsUrl, loadConfig, type Config } from './lib/config';
 import { markAutofilled, saveScreenshot } from './lib/history';
-import { getSaved, hostFromUrl } from './lib/fieldStore';
+import { getSaved, hostFromUrl, mergeRemoteVault } from './lib/fieldStore';
+import { syncVault } from './lib/vault';
 import StatusPage from './pages/StatusPage';
 import HistoryPage from './pages/HistoryPage';
 import SettingsPage from './pages/SettingsPage';
@@ -46,7 +47,7 @@ interface AppCtx {
 }
 
 const Ctx = createContext<AppCtx>({
-  config: { baseUrl: '', apiKey: '' },
+  config: { baseUrl: '', apiKey: '', secret: '' },
   connState: 'disconnected',
   configLoaded: false,
   reloadConfig: async () => {},
@@ -55,18 +56,39 @@ const Ctx = createContext<AppCtx>({
 export const useApp = () => useContext(Ctx);
 
 export default function App() {
-  const [config, setConfig] = useState<Config>({ baseUrl: '', apiKey: '' });
+  const [config, setConfig] = useState<Config>({ baseUrl: '', apiKey: '', secret: '' });
   const [connState, setConnState] = useState<ConnState>('disconnected');
   const [configLoaded, setConfigLoaded] = useState(false);
   const [queue, setQueue] = useState<FillRequest[]>([]);
   const started = useRef(false);
   const baseUrlRef = useRef(''); // latest base URL for the once-registered request listener
+  const cfgRef = useRef<Config>({ baseUrl: '', apiKey: '', secret: '' }); // latest full config
+  const syncingVault = useRef(false);
+
+  // Sync the "vault"-scoped saved fields with the service: pull the remote blob,
+  // merge it into the local cache (last-write-wins), and push the union back. The
+  // service only ever sees opaque ciphertext (see vault.ts). Best-effort — no-ops
+  // without an API key or a held session secret to key the vault with.
+  const syncVaultNow = useCallback(async () => {
+    if (syncingVault.current) return;
+    const { baseUrl, apiKey, secret } = cfgRef.current;
+    if (!baseUrl || !apiKey || !secret) return;
+    syncingVault.current = true;
+    try {
+      await syncVault({ baseUrl, apiKey }, secret, (remoteFields) => mergeRemoteVault(remoteFields));
+    } catch {
+      /* offline / transient — retried on the next connect or save */
+    } finally {
+      syncingVault.current = false;
+    }
+  }, []);
 
   const applyConfig = useCallback(async () => {
     const cfg = await loadConfig();
     setConfig(cfg);
     setConfigLoaded(true);
     baseUrlRef.current = cfg.baseUrl;
+    cfgRef.current = cfg;
     keeper.configure(keeperWsUrl(cfg.baseUrl), cfg.apiKey, cfg.baseUrl);
     keeper.disconnect();
     keeper.connect();
@@ -82,6 +104,8 @@ export default function App() {
 
     keeper.on('state', (s) => {
       setConnState(s);
+      // On (re)connect, pull vault entries saved on another paired device (and push ours).
+      if (s === 'connected') void syncVaultNow();
       // Surface the live socket state in the ongoing notification, so the user can
       // see whether the keeper is actually connected (not just "running").
       const text =
@@ -142,13 +166,15 @@ export default function App() {
     return () => {
       resume.then((h) => h.remove());
     };
-  }, [applyConfig]);
+  }, [applyConfig, syncVaultNow]);
 
   const current = queue[0] || null;
 
   const finish = (req: FillRequest, payload: { values?: { selector: string; value: string }[]; cancelled?: boolean }) => {
     if (payload.cancelled) keeper.cancel(req.request_id);
     else keeper.submit(req.request_id, payload.values || []);
+    // The prompt may have saved/forgotten a vault-scoped value → push it to other devices.
+    if (!payload.cancelled) void syncVaultNow();
     // Cache the proof screenshot locally so History can show it (no values stored).
     if (req.screenshot) void saveScreenshot(req.request_id, req.screenshot);
     setQueue((q) => {

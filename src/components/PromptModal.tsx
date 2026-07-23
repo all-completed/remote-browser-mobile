@@ -221,15 +221,16 @@ export default function PromptModal({ request, baseUrl, onSubmit, onCancel }: Pr
               onIonChange={(e) => {
                 const v = e.detail.value as '' | Scope | 'forget';
                 setSaveScope(v);
-                setDontAsk(v === 'session' || v === 'forever');
+                setDontAsk(v === 'session' || v === 'forever' || v === 'vault');
               }}
             >
               {!savedExisting && <IonSelectOption value="">Don't save</IonSelectOption>}
               <IonSelectOption value="session">Until the app restarts</IonSelectOption>
               <IonSelectOption value="forever">Keep on this device</IonSelectOption>
+              <IonSelectOption value="vault">Save to vault (synced across devices)</IonSelectOption>
               {savedExisting && <IonSelectOption value="forget">Forget saved value</IonSelectOption>}
             </IonSelect>
-            {(saveScope === 'session' || saveScope === 'forever') && (
+            {(saveScope === 'session' || saveScope === 'forever' || saveScope === 'vault') && (
               <label
                 style={{ display: 'flex', alignItems: 'center', gap: 10, marginTop: 10, fontSize: 13.5, color: 'var(--rb-muted2)' }}
               >
