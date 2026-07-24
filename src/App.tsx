@@ -11,7 +11,7 @@ import { initPush } from './lib/push';
 import { keeperWsUrl, loadConfig, type Config } from './lib/config';
 import { markAutofilled, saveScreenshot } from './lib/history';
 import { getSaved, hostFromUrl, mergeRemoteVault } from './lib/fieldStore';
-import { syncVault } from './lib/vault';
+import { syncVault, VaultKeyMismatch } from './lib/vault';
 import StatusPage from './pages/StatusPage';
 import HistoryPage from './pages/HistoryPage';
 import SettingsPage from './pages/SettingsPage';
@@ -47,7 +47,7 @@ interface AppCtx {
 }
 
 const Ctx = createContext<AppCtx>({
-  config: { baseUrl: '', apiKey: '', secret: '' },
+  config: { baseUrl: '', apiKey: '', secret: '', vaultKey: null },
   connState: 'disconnected',
   configLoaded: false,
   reloadConfig: async () => {},
@@ -56,28 +56,30 @@ const Ctx = createContext<AppCtx>({
 export const useApp = () => useContext(Ctx);
 
 export default function App() {
-  const [config, setConfig] = useState<Config>({ baseUrl: '', apiKey: '', secret: '' });
+  const [config, setConfig] = useState<Config>({ baseUrl: '', apiKey: '', secret: '', vaultKey: null });
   const [connState, setConnState] = useState<ConnState>('disconnected');
   const [configLoaded, setConfigLoaded] = useState(false);
   const [queue, setQueue] = useState<FillRequest[]>([]);
   const started = useRef(false);
   const baseUrlRef = useRef(''); // latest base URL for the once-registered request listener
-  const cfgRef = useRef<Config>({ baseUrl: '', apiKey: '', secret: '' }); // latest full config
+  const cfgRef = useRef<Config>({ baseUrl: '', apiKey: '', secret: '', vaultKey: null }); // latest full config
   const syncingVault = useRef(false);
 
   // Sync the "vault"-scoped saved fields with the service: pull the remote blob,
   // merge it into the local cache (last-write-wins), and push the union back. The
   // service only ever sees opaque ciphertext (see vault.ts). Best-effort — no-ops
-  // without an API key or a held session secret to key the vault with.
+  // without an API key or a held vault key (provisioned by the desktop pair QR).
   const syncVaultNow = useCallback(async () => {
     if (syncingVault.current) return;
-    const { baseUrl, apiKey, secret } = cfgRef.current;
-    if (!baseUrl || !apiKey || !secret) return;
+    const { baseUrl, apiKey, vaultKey } = cfgRef.current;
+    if (!baseUrl || !apiKey || !vaultKey) return;
     syncingVault.current = true;
     try {
-      await syncVault({ baseUrl, apiKey }, secret, (remoteFields) => mergeRemoteVault(remoteFields));
-    } catch {
-      /* offline / transient — retried on the next connect or save */
+      await syncVault({ baseUrl, apiKey }, vaultKey, (remoteFields) => mergeRemoteVault(remoteFields));
+    } catch (e) {
+      // A key mismatch means the vault password changed elsewhere — re-pair to update it.
+      if (e instanceof VaultKeyMismatch) console.warn('[keeper] vault: re-pair to update the vault password');
+      /* otherwise offline / transient — retried on the next connect or save */
     } finally {
       syncingVault.current = false;
     }

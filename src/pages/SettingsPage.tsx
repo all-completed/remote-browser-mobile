@@ -16,7 +16,7 @@ import {
 import { qrCodeOutline, scanOutline } from 'ionicons/icons';
 import { IonIcon } from '@ionic/react';
 import { useApp } from '../App';
-import { loadConfig, loadSecret, saveConfig } from '../lib/config';
+import { loadConfig, loadSecret, loadVaultKey, saveConfig } from '../lib/config';
 import { makeQrDataUrl, parsePayload } from '../lib/pair';
 import { canScan, scanQr } from '../lib/scan';
 
@@ -55,8 +55,9 @@ export default function SettingsPage() {
       return;
     }
     try {
-      const secret = await loadSecret(); // re-share the vault key too, if we hold one
-      setQr(await makeQrDataUrl({ baseUrl, apiKey, secret: secret || undefined }));
+      const secret = await loadSecret(); // re-share the session secret + vault key we hold
+      const vaultKey = await loadVaultKey();
+      setQr(await makeQrDataUrl({ baseUrl, apiKey, secret: secret || undefined, vault: vaultKey || undefined }));
     } catch (e: any) {
       present({ message: 'Could not build QR: ' + (e?.message || e), duration: 2000, position: 'bottom' });
     }
@@ -78,7 +79,7 @@ export default function SettingsPage() {
       }
       setBaseUrl(cfg.baseUrl);
       setApiKey(cfg.apiKey);
-      await saveConfig(cfg);
+      await saveConfig({ baseUrl: cfg.baseUrl, apiKey: cfg.apiKey, secret: cfg.secret, vaultKey: cfg.vault });
       await reloadConfig();
       present({ message: 'Paired — reconnecting', duration: 1800, position: 'bottom' });
     } catch (e: any) {

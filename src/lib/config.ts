@@ -1,65 +1,68 @@
 import { Preferences } from '@capacitor/preferences';
 import { SecureStorage } from '@aparajita/capacitor-secure-storage';
+import type { VaultKey } from './vaultCrypto';
 
 export interface Config {
   baseUrl: string;
   apiKey: string;
-  secret: string; // session vault key (from pairing); '' when none is held
+  secret: string; // session secret (from pairing); '' when none is held
+  vaultKey: VaultKey | null; // dedicated vault password (from pairing); null when none
 }
 
-// The base URL is non-secret and stays in Preferences. The API token and the session
-// `secret` live in secure storage (Android Keystore-backed EncryptedSharedPreferences
-// / iOS Keychain), never in plaintext on disk.
+// The base URL is non-secret and stays in Preferences. The API token, the session
+// `secret`, and the dedicated vault key live in secure storage (Android Keystore-backed
+// EncryptedSharedPreferences / iOS Keychain), never in plaintext on disk.
 const LEGACY_KEY = 'rbkeeper.config'; // old combined blob (baseUrl + apiKey, plaintext)
 const URL_KEY = 'rbkeeper.baseUrl';
 const SECURE_API_KEY = 'rbkeeper.apiKey';
 const SECURE_SECRET = 'rbkeeper.secret';
+const SECURE_VAULTKEY = 'rbkeeper.vaultKey';
 const DEFAULT_URL = 'https://rb.all-completed.com';
 
-async function getApiKey(): Promise<string> {
+async function secureGet(key: string): Promise<string> {
   try {
-    const v = await SecureStorage.get(SECURE_API_KEY);
+    const v = await SecureStorage.get(key);
     return typeof v === 'string' ? v : '';
   } catch {
     return '';
   }
 }
-
-async function setApiKey(value: string): Promise<boolean> {
+async function secureSet(key: string, value: string): Promise<boolean> {
   try {
-    if (value) await SecureStorage.set(SECURE_API_KEY, value);
-    else await SecureStorage.remove(SECURE_API_KEY);
+    if (value) await SecureStorage.set(key, value);
+    else await SecureStorage.remove(key);
     return true;
   } catch {
-    /* secure storage unavailable (e.g. web preview) — token isn't persisted */
+    /* secure storage unavailable (e.g. web preview) — not persisted */
     return false;
   }
 }
 
-// The session secret keys the synced vault (vaultCrypto.ts). It is provisioned by
+// The dedicated vault key (vaultCrypto.ts) — { password, format, salt? }. Provisioned by
 // the desktop pair QR; treated exactly like the API token at rest.
-async function getSecret(): Promise<string> {
+async function getVaultKey(): Promise<VaultKey | null> {
+  const raw = await secureGet(SECURE_VAULTKEY);
+  if (!raw) return null;
   try {
-    const v = await SecureStorage.get(SECURE_SECRET);
-    return typeof v === 'string' ? v : '';
-  } catch {
-    return '';
-  }
+    const o = JSON.parse(raw);
+    if (o && typeof o.password === 'string' && o.password && typeof o.format === 'string') {
+      return { password: o.password, format: o.format, ...(o.salt ? { salt: o.salt } : {}) };
+    }
+  } catch { /* corrupt */ }
+  return null;
+}
+async function setVaultKey(key: VaultKey | null | undefined): Promise<boolean> {
+  if (!key || !key.password) return true; // never clobber an existing key with nothing
+  return secureSet(SECURE_VAULTKEY, JSON.stringify({ password: key.password, format: key.format, ...(key.salt ? { salt: key.salt } : {}) }));
 }
 
-async function setSecret(value: string): Promise<boolean> {
-  try {
-    if (value) await SecureStorage.set(SECURE_SECRET, value);
-    else await SecureStorage.remove(SECURE_SECRET);
-    return true;
-  } catch {
-    return false;
-  }
-}
-
-// The held session secret, or '' — used to encrypt/decrypt the synced vault.
+// The held session secret, or '' (legacy; the vault now uses its own key).
 export async function loadSecret(): Promise<string> {
-  return getSecret();
+  return secureGet(SECURE_SECRET);
+}
+// The held vault key, or null — used to encrypt/decrypt the synced vault.
+export async function loadVaultKey(): Promise<VaultKey | null> {
+  return getVaultKey();
 }
 
 export async function loadConfig(): Promise<Config> {
@@ -70,8 +73,9 @@ export async function loadConfig(): Promise<Config> {
   } catch {
     /* defaults */
   }
-  let apiKey = await getApiKey();
-  const secret = await getSecret();
+  let apiKey = await secureGet(SECURE_API_KEY);
+  const secret = await secureGet(SECURE_SECRET);
+  const vaultKey = await getVaultKey();
 
   // One-time migration: older builds kept {baseUrl, apiKey} as a plaintext blob in
   // Preferences. Move the token into secure storage and delete the cleartext copy.
@@ -84,12 +88,10 @@ export async function loadConfig(): Promise<Config> {
           baseUrl = c.baseUrl;
           await Preferences.set({ key: URL_KEY, value: baseUrl });
         }
-        // Only drop the plaintext copy once the token is safely in secure storage —
-        // never delete it if the secure write failed (would lose the token).
         let secured = true;
         if (c.apiKey && !apiKey) {
           apiKey = c.apiKey;
-          secured = await setApiKey(apiKey);
+          secured = await secureSet(SECURE_API_KEY, apiKey);
         }
         if (secured) await Preferences.remove({ key: LEGACY_KEY });
       }
@@ -98,20 +100,24 @@ export async function loadConfig(): Promise<Config> {
     }
   }
 
-  return { baseUrl: baseUrl || DEFAULT_URL, apiKey, secret };
+  return { baseUrl: baseUrl || DEFAULT_URL, apiKey, secret, vaultKey };
 }
 
-// `secret` is optional here: the manual settings form doesn't touch it, and pairing
-// may or may not carry one — an absent/empty secret leaves any stored secret intact.
-export async function saveConfig(c: { baseUrl: string; apiKey: string; secret?: string }): Promise<void> {
+// `secret` / `vaultKey` are optional here: the manual settings form doesn't touch them,
+// and pairing may or may not carry them — an absent value leaves any stored one intact.
+export async function saveConfig(c: { baseUrl: string; apiKey: string; secret?: string; vaultKey?: VaultKey | null }): Promise<void> {
   const baseUrl = (c.baseUrl || DEFAULT_URL).trim().replace(/\/+$/, '');
   await Preferences.set({ key: URL_KEY, value: baseUrl });
-  await setApiKey((c.apiKey || '').trim());
-  // Only overwrite the stored secret when the caller supplies one (pairing may or may
-  // not carry it); never clobber an existing secret with an empty string.
-  if (typeof c.secret === 'string' && c.secret.trim()) await setSecret(c.secret.trim());
+  await secureSet(SECURE_API_KEY, (c.apiKey || '').trim());
+  if (typeof c.secret === 'string' && c.secret.trim()) await secureSet(SECURE_SECRET, c.secret.trim());
+  await setVaultKey(c.vaultKey);
   // Ensure no legacy plaintext token lingers.
   try { await Preferences.remove({ key: LEGACY_KEY }); } catch { /* ignore */ }
+}
+
+// Persist a vault key locally after a re-key on this device (item 3).
+export async function storeVaultKey(key: VaultKey): Promise<boolean> {
+  return setVaultKey(key);
 }
 
 /** Derive the Keeper WebSocket URL from the service base URL. */
