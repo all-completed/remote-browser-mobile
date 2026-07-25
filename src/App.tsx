@@ -2,7 +2,7 @@ import { createContext, useCallback, useContext, useEffect, useRef, useState } f
 import { IonReactRouter } from '@ionic/react-router';
 import { IonIcon, IonLabel, IonRouterOutlet, IonTabBar, IonTabButton, IonTabs } from '@ionic/react';
 import { Redirect, Route } from 'react-router-dom';
-import { homeOutline, keyOutline, settingsOutline, timeOutline } from 'ionicons/icons';
+import { cardOutline, homeOutline, keyOutline, settingsOutline, timeOutline } from 'ionicons/icons';
 import { App as CapApp } from '@capacitor/app';
 
 import { keeper, type ConnState, type FillRequest } from './lib/keeperClient';
@@ -16,6 +16,7 @@ import StatusPage from './pages/StatusPage';
 import HistoryPage from './pages/HistoryPage';
 import SettingsPage from './pages/SettingsPage';
 import SavedFieldsPage from './pages/SavedFieldsPage';
+import CardsPage from './pages/CardsPage';
 import PromptModal from './components/PromptModal';
 
 const isCard = (field?: string) => String(field || '').toLowerCase().startsWith('card-');
@@ -207,6 +208,7 @@ export default function App() {
             <Route exact path="/status" component={StatusPage} />
             <Route exact path="/history" component={HistoryPage} />
             <Route exact path="/saved" component={SavedFieldsPage} />
+            <Route exact path="/cards" component={CardsPage} />
             <Route exact path="/settings" component={SettingsPage} />
             <Route exact path="/">
               <Redirect to="/status" />
@@ -224,6 +226,10 @@ export default function App() {
             <IonTabButton tab="saved" href="/saved">
               <IonIcon icon={keyOutline} />
               <IonLabel>Saved</IonLabel>
+            </IonTabButton>
+            <IonTabButton tab="cards" href="/cards">
+              <IonIcon icon={cardOutline} />
+              <IonLabel>Cards</IonLabel>
             </IonTabButton>
             <IonTabButton tab="settings" href="/settings">
               <IonIcon icon={settingsOutline} />

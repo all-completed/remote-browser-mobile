@@ -16,18 +16,29 @@ import {
   useIonToast,
 } from '@ionic/react';
 import type { RefresherEventDetail } from '@ionic/react';
-import { forgetAll, forgetMeta, listSaved, type SavedMeta } from '../lib/fieldStore';
+import { forgetAll, forgetMeta, getSaved, listSaved, type SavedMeta } from '../lib/fieldStore';
 
 // Management screen: lists values kept on this device and lets the user forget any
-// (or all). Only metadata is shown — the value itself is never displayed or sent to
-// any model.
+// (or all). A value is shown only when the user taps Reveal (e.g. to read a generated
+// password); it is never sent to any model.
 export default function SavedFieldsPage() {
   const [items, setItems] = useState<SavedMeta[]>([]);
+  const [shown, setShown] = useState<Record<string, string>>({}); // key -> revealed value
   const [present] = useIonToast();
   const [presentAlert] = useIonAlert();
 
+  const keyOf = (m: SavedMeta) => `${m.baseUrl}|${m.session}|${m.host}|${m.selector}`;
+  const toggleReveal = async (m: SavedMeta) => {
+    const k = keyOf(m);
+    if (shown[k] != null) { setShown((s) => { const n = { ...s }; delete n[k]; return n; }); return; }
+    const v = await getSaved(m.baseUrl, m.session, m.host, m.selector);
+    if (v && v.value != null) setShown((s) => ({ ...s, [k]: v.value }));
+    else present({ message: 'No value found', duration: 1200, position: 'bottom' });
+  };
+
   const load = async () => {
     setItems(await listSaved());
+    setShown({});
   };
 
   useEffect(() => {
@@ -92,7 +103,7 @@ export default function SavedFieldsPage() {
         </IonRefresher>
 
         <p className="rb-note">
-          Values you chose to keep on this device. They are stored locally, never shown here, and never sent to the AI model.
+          Values you chose to keep. Never sent to the AI model; shown only when you tap <b>Reveal</b>.
         </p>
 
         {items.length === 0 ? (
@@ -108,7 +119,10 @@ export default function SavedFieldsPage() {
                     {m.scope === 'vault' ? 'vault · synced' : m.scope === 'forever' ? 'on this device' : 'until restart'}
                   </IonChip>
                   {m.auto && <IonChip color="primary">auto-fill</IonChip>}
-                  <IonButton size="small" fill="outline" color="danger" style={{ marginLeft: 'auto' }} onClick={() => onForget(m)}>
+                  <IonButton size="small" fill="outline" style={{ marginLeft: 'auto' }} onClick={() => void toggleReveal(m)}>
+                    {shown[keyOf(m)] != null ? 'Hide' : 'Reveal'}
+                  </IonButton>
+                  <IonButton size="small" fill="outline" color="danger" onClick={() => onForget(m)}>
                     Forget
                   </IonButton>
                 </div>
@@ -124,6 +138,14 @@ export default function SavedFieldsPage() {
                   <span style={{ color: 'var(--rb-muted2)' }}>selector: </span>
                   {m.selector}
                 </div>
+                {shown[keyOf(m)] != null && (
+                  <div style={{ marginTop: 8, fontSize: 14, wordBreak: 'break-all' }}>
+                    <span style={{ color: 'var(--rb-muted2)' }}>value: </span>
+                    <code style={{ userSelect: 'all', background: 'rgba(255,255,255,.07)', padding: '2px 6px', borderRadius: 5 }}>
+                      {shown[keyOf(m)]}
+                    </code>
+                  </div>
+                )}
               </IonCardContent>
             </IonCard>
           ))
