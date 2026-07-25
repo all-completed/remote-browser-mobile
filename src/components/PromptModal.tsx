@@ -13,6 +13,7 @@ import {
   submitValue,
 } from '../lib/format';
 import { getSaved, hostFromUrl, saveValue, forget, type Scope } from '../lib/fieldStore';
+import { loadVaultKey } from '../lib/config';
 import ImageModal from './ImageModal';
 
 interface Props {
@@ -58,8 +59,11 @@ export default function PromptModal({ request, baseUrl, onSubmit, onCancel }: Pr
     }
     if (hasGen) {
       setValues((m) => ({ ...m, ...genInit }));
-      setSaveScope('forever');
       setDontAsk(true);
+      // A generated password is never shown, so back it up / sync it: default to the vault
+      // when a vault key is held, otherwise on-device ("forever").
+      setSaveScope('forever');
+      loadVaultKey().then((k) => { if (k) setSaveScope('vault'); }).catch(() => {});
     }
     let cancelled = false;
     (async () => {
