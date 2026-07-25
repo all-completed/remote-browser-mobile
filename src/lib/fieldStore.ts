@@ -213,8 +213,9 @@ export async function listSaved(): Promise<SavedMeta[]> {
     const selector = vk.slice(i2 + 1);
     add({ baseUrl: '', session, host, selector, scope: 'vault', auto: !!e.auto }, true);
   }
-  const out: SavedMeta[] = [...byKey.values()];
-  return out;
+  // Synced "vault" fields first, then on-device "forever", then in-memory "session".
+  const rank: Record<string, number> = { vault: 0, forever: 1, session: 2 };
+  return [...byKey.values()].sort((a, b) => (rank[a.scope] ?? 3) - (rank[b.scope] ?? 3));
 }
 
 // --- Vault sync helpers (used by App.tsx against /api/vault via vault.ts) ---
