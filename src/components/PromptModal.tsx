@@ -83,7 +83,13 @@ export default function PromptModal({ request, baseUrl, onSubmit, onCancel }: Pr
           any = true;
         }
       }
-      if (cancelled || !any) return;
+      if (cancelled) return;
+      if (!any) {
+        // No previously-saved value: default a (non-generate) field to the synced vault
+        // when a vault key is held. The user can still change it in the prompt.
+        if (!hasGen) { const k = await loadVaultKey(); if (!cancelled && k) setSaveScope('vault'); }
+        return;
+      }
       setValues((m) => ({ ...m, ...prefill }));
       setSavedExisting(true);
       setSaveScope(firstScope);
