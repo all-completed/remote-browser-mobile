@@ -73,7 +73,7 @@ export async function putVault(
   baseVersion: number,
   http: HttpFn = defaultHttp,
 ): Promise<{ ok?: boolean; version?: number; conflict?: boolean; current?: any }> {
-  const enc = await encryptVault(key, { schema: VAULT_SCHEMA, fields: (data && data.fields) || {} });
+  const enc = await encryptVault(key, normalizeBlob(data));
   const body = { ciphertext: enc.ciphertext, secret_id: enc.secret_id, format: enc.format, base_version: Number(baseVersion) || 0 };
   const res = await http({
     method: 'PUT',
@@ -90,31 +90,43 @@ export async function putVault(
   return { ok: true, version: out?.metadata?.version };
 }
 
-// Order-independent JSON so a routine sync that changes nothing skips the PUT.
-function stableStringify(obj: Record<string, VaultEntry>): string {
-  return JSON.stringify(Object.keys(obj).sort().map((k) => [k, obj[k]]));
+// The vault blob is a set of independent collections (fields, cards, …). Normalize the
+// known ones while preserving any unknown collections a newer client added.
+function normalizeBlob(b: any): VaultBlob {
+  const o = b && typeof b === 'object' ? b : {};
+  return { ...o, schema: VAULT_SCHEMA, fields: o.fields || {}, cards: o.cards || {}, cardsMeta: o.cardsMeta || {} };
 }
 
-// Pull → mutate(remoteFields) → push at the pulled version, retrying on 409. `mutate`
-// merges the decrypted remote map with local state and returns the map to store
-// (idempotent, so re-applying after a conflict is safe).
+// Deep, order-independent JSON for the no-op comparison (the blob nests per-entry maps).
+function stableStringify(obj: any): string {
+  if (Array.isArray(obj)) return '[' + obj.map(stableStringify).join(',') + ']';
+  if (obj && typeof obj === 'object') {
+    return '{' + Object.keys(obj).sort().map((k) => JSON.stringify(k) + ':' + stableStringify(obj[k])).join(',') + '}';
+  }
+  return JSON.stringify(obj);
+}
+
+// Pull → mergeBlob(remoteBlob) → push at the pulled version, retrying on 409. `mergeBlob`
+// merges the decrypted remote blob (all collections) with local state and returns the
+// blob to store. Mobile has no card store, so its mergeBlob touches `fields` and passes
+// `cards` through unchanged — that's what keeps desktop-saved cards from being dropped.
 export async function syncVault(
   cfg: VaultConfig,
   key: VaultKey,
-  mutate: (remoteFields: Record<string, VaultEntry>) => Record<string, VaultEntry> | Promise<Record<string, VaultEntry>>,
+  mergeBlob: (remoteBlob: VaultBlob) => VaultBlob | Promise<VaultBlob>,
   http: HttpFn = defaultHttp,
   retries = 5,
-): Promise<Record<string, VaultEntry>> {
+): Promise<VaultBlob> {
   for (let attempt = 0; attempt <= retries; attempt++) {
     const { version, data, format } = await pullVault(cfg, key, http);
-    const remoteFields = (data && data.fields) || {};
-    const nextFields = (await mutate({ ...remoteFields })) || {};
+    const remoteBlob = normalizeBlob(data);
+    const nextBlob = normalizeBlob(await mergeBlob(remoteBlob));
     // Skip a no-op write only when the stored format matches our key's format — a re-key
-    // with unchanged fields must still be pushed.
-    if (version > 0 && format === key.format && stableStringify(nextFields) === stableStringify(remoteFields)) return nextFields;
-    const res = await putVault(cfg, key, { schema: VAULT_SCHEMA, fields: nextFields }, version, http);
+    // with unchanged data must still be pushed.
+    if (version > 0 && format === key.format && stableStringify(nextBlob) === stableStringify(remoteBlob)) return nextBlob;
+    const res = await putVault(cfg, key, nextBlob, version, http);
     if (res.conflict) continue;
-    return nextFields;
+    return nextBlob;
   }
   throw new Error('vault sync failed after repeated version conflicts');
 }

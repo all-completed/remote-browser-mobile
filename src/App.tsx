@@ -75,7 +75,12 @@ export default function App() {
     if (!baseUrl || !apiKey || !vaultKey) return;
     syncingVault.current = true;
     try {
-      await syncVault({ baseUrl, apiKey }, vaultKey, (remoteFields) => mergeRemoteVault(remoteFields));
+      // Merge only `fields`; pass every other collection (e.g. desktop-saved `cards`)
+      // through unchanged so this device never drops them.
+      await syncVault({ baseUrl, apiKey }, vaultKey, async (remoteBlob) => ({
+        ...remoteBlob,
+        fields: await mergeRemoteVault(remoteBlob.fields || {}),
+      }));
     } catch (e) {
       // A key mismatch means the vault password changed elsewhere — re-pair to update it.
       if (e instanceof VaultKeyMismatch) console.warn('[keeper] vault: re-pair to update the vault password');

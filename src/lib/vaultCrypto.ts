@@ -38,10 +38,15 @@ export type VaultEntry =
 export interface VaultBlob {
   schema: number;
   fields: Record<string, VaultEntry>;
+  // Cards are a desktop-only feature; mobile preserves this collection untouched on sync.
+  cards?: Record<string, VaultEntry>;
+  cardsMeta?: Record<string, any>;
+  // Forward-compat: keep any future collections a newer client adds.
+  [k: string]: any;
 }
 
 export function emptyVault(): VaultBlob {
-  return { schema: VAULT_SCHEMA, fields: {} };
+  return { schema: VAULT_SCHEMA, fields: {}, cards: {}, cardsMeta: {} };
 }
 
 const subtle = (): SubtleCrypto => {
