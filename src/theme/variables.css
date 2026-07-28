@@ -159,3 +159,17 @@ ion-content {
 ion-card {
   margin: 5px;
 }
+
+/* Click-to-filter chips + the active-filter bar (History / Saved fields).
+   Filtering happens entirely in the app over data already loaded — no refetch. */
+.rb-chip-active {
+  border: 1px solid var(--ion-color-primary, #3880ff) !important;
+  color: var(--ion-color-primary, #3880ff) !important;
+}
+.rb-filterbar {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+  margin: 4px 4px 10px;
+}

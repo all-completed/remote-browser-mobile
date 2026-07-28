@@ -24,6 +24,15 @@ import { forgetAll, forgetMeta, getSaved, listSaved, type SavedMeta } from '../l
 export default function SavedFieldsPage() {
   const [items, setItems] = useState<SavedMeta[]>([]);
   const [shown, setShown] = useState<Record<string, string>>({}); // key -> revealed value
+  // Tap a host/session chip to narrow the list; tap the active one to clear.
+  // Entirely client-side over the already-loaded list.
+  const [filter, setFilter] = useState<{ session: string | null; host: string | null }>({ session: null, host: null });
+  const onFilter = (key: 'session' | 'host', value: string | null) =>
+    setFilter((f) => ({ ...f, [key]: value }));
+  const visible = items.filter((m) => (
+    (filter.session === null || (m.session || '') === filter.session)
+    && (filter.host === null || m.host === filter.host)
+  ));
   const [present] = useIonToast();
   const [presentAlert] = useIonAlert();
 
@@ -111,7 +120,7 @@ export default function SavedFieldsPage() {
             No saved fields.
           </p>
         ) : (
-          items.map((m, i) => (
+          visible.map((m, i) => (
             <IonCard key={m.baseUrl + '|' + m.session + '|' + m.host + '|' + m.selector + '|' + i}>
               <IonCardContent>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
@@ -127,10 +136,18 @@ export default function SavedFieldsPage() {
                   </IonButton>
                 </div>
                 <div style={{ marginTop: 6 }}>
-                  <span className="rb-chip url" title={m.host}>
+                  <span
+                    className={'rb-chip url' + (filter.host === m.host ? ' rb-chip-active' : '')}
+                    title={m.host}
+                    onClick={() => onFilter('host', filter.host === m.host ? null : m.host)}
+                  >
                     {m.host || '—'}
                   </span>
-                  <span className="rb-chip" style={{ marginLeft: 6 }}>
+                  <span
+                    className={'rb-chip' + (filter.session === (m.session || '') ? ' rb-chip-active' : '')}
+                    style={{ marginLeft: 6 }}
+                    onClick={() => onFilter('session', filter.session === (m.session || '') ? null : (m.session || ''))}
+                  >
                     session: {m.session || '—'}
                   </span>
                 </div>

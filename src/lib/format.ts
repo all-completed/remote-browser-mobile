@@ -199,3 +199,35 @@ export function fieldHint(field?: string, format?: string): string {
 export function formatHint(format?: string): string {
   return fieldHint(undefined, format);
 }
+
+// ---- Relative timestamps -----------------------------------------------------
+// "2w ago" answers "is this recent?" at a glance where a full timestamp has to be
+// decoded. On mobile there is no hover, so callers pair this with absTime() behind
+// a TAP rather than a title attribute.
+const _SECONDS_CUTOFF = 1e11;
+export function toDate(ts?: string | number | Date | null): Date | null {
+  if (ts == null || ts === '') return null;
+  if (ts instanceof Date) return isNaN(ts.getTime()) ? null : ts;
+  if (typeof ts === 'number') return new Date(ts < _SECONDS_CUTOFF ? ts * 1000 : ts);
+  const n = Number(ts);
+  if (!Number.isNaN(n) && String(ts).trim() !== '') return new Date(n < _SECONDS_CUTOFF ? n * 1000 : n);
+  const d = new Date(ts);
+  return isNaN(d.getTime()) ? null : d;
+}
+const _UNITS: [string, number][] = [['y', 365 * 24 * 3600], ['mo', 30 * 24 * 3600], ['w', 7 * 24 * 3600],
+  ['d', 24 * 3600], ['h', 3600], ['m', 60]];
+export function relTime(ts?: string | number | Date | null, now: number = Date.now()): string {
+  const d = toDate(ts);
+  if (!d) return '';
+  const diff = (now - d.getTime()) / 1000;
+  const future = diff < 0, abs = Math.abs(diff);
+  if (abs < 45) return future ? 'in a moment' : 'just now';
+  for (const [suffix, secs] of _UNITS) {
+    if (abs >= secs) { const n = Math.floor(abs / secs); return future ? `in ${n}${suffix}` : `${n}${suffix} ago`; }
+  }
+  return future ? 'in a moment' : 'just now';
+}
+export function absTime(ts?: string | number | Date | null): string {
+  const d = toDate(ts);
+  return d ? d.toLocaleString() : '';
+}

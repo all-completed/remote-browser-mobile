@@ -18,7 +18,7 @@ import {
 import type { RefresherEventDetail } from '@ionic/react';
 import { useApp } from '../App';
 import { fetchHistory, getAutofilledIds, readScreenshot, reconcileScreenshots, type HistoryItem } from '../lib/history';
-import { fmtTime, shortUrl } from '../lib/format';
+import { relTime, absTime, shortUrl } from '../lib/format';
 import ImageModal from '../components/ImageModal';
 
 const STATUS_COLOR: Record<string, string> = {
@@ -31,6 +31,10 @@ const STATUS_COLOR: Record<string, string> = {
   error: 'danger',
 };
 
+function hostOf(u?: string): string {
+  try { return u ? new URL(u).host : ''; } catch { return ''; }
+}
+
 export default function HistoryPage() {
   const { config } = useApp();
   const [items, setItems] = useState<HistoryItem[]>([]);
@@ -38,6 +42,18 @@ export default function HistoryPage() {
   const [error, setError] = useState('');
   const [zoom, setZoom] = useState<string | null>(null);
   const [autoIds, setAutoIds] = useState<Set<string>>(new Set());
+  // Tap a session/host chip to narrow the list; tap the active one to clear.
+  // Purely client-side over the already-fetched page — no refetch.
+  const [filter, setFilter] = useState<{ session: string | null; host: string | null }>({ session: null, host: null });
+  const onFilter = (key: 'session' | 'host', value: string | null) =>
+    setFilter((f) => ({ ...f, [key]: value }));
+  // No hover on a phone, so the exact timestamp is revealed by TAPPING the
+  // relative one (per request id) instead of living in a title attribute.
+  const [absShown, setAbsShown] = useState<Record<string, boolean>>({});
+  const visible = items.filter((it) => (
+    (!filter.session || it.session_id === filter.session)
+    && (!filter.host || hostOf(it.url) === filter.host)
+  ));
   const [present] = useIonToast();
 
   const load = async () => {
@@ -100,7 +116,19 @@ export default function HistoryPage() {
           </p>
         )}
 
-        {items.map((it, i) => {
+        {(filter.session || filter.host) && (
+          <div className="rb-filterbar">
+            <span className="rb-note">Filtered by</span>
+            {filter.session && <IonChip color="primary" onClick={() => onFilter('session', null)}>session: {filter.session} ✕</IonChip>}
+            {filter.host && <IonChip color="primary" onClick={() => onFilter('host', null)}>{filter.host} ✕</IonChip>}
+            <IonNote style={{ marginLeft: 'auto' }}>{visible.length} of {items.length}</IonNote>
+          </div>
+        )}
+        {items.length > 0 && visible.length === 0 && (
+          <p className="rb-note" style={{ textAlign: 'center', padding: 16 }}>No requests match this filter.</p>
+        )}
+
+        {visible.map((it, i) => {
           const names = (it.fields || []).map((f) => f.label || f.field || f.selector || 'field');
           // The server reports "filled" for a silent auto-fill too; relabel ours.
           const label = it.status === 'filled' && autoIds.has(it.request_id) ? 'autofilled' : it.status || 'unknown';
@@ -109,14 +137,28 @@ export default function HistoryPage() {
               <IonCardContent>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
                   <IonChip color={STATUS_COLOR[label] || 'medium'}>{label}</IonChip>
-                  {it.session_id && <span className="rb-chip">session: {it.session_id}</span>}
-                  <span style={{ marginLeft: 'auto', fontSize: 12, color: 'var(--rb-muted)' }}>
-                    {fmtTime(it.created_at)}
+                  {it.session_id && (
+                    <span
+                      className={'rb-chip' + (filter.session === it.session_id ? ' rb-chip-active' : '')}
+                      onClick={() => onFilter('session', filter.session === it.session_id ? null : it.session_id!)}
+                    >session: {it.session_id}</span>
+                  )}
+                  {/* Tap to swap between "2w ago" and the exact timestamp —
+                      phones have no hover, so a title attribute would be dead weight. */}
+                  <span
+                    style={{ marginLeft: 'auto', fontSize: 12, color: 'var(--rb-muted)' }}
+                    title={absTime(it.created_at)}
+                    onClick={() => setAbsShown((m) => ({ ...m, [it.request_id]: !m[it.request_id] }))}
+                  >
+                    {absShown[it.request_id] ? absTime(it.created_at) : relTime(it.created_at)}
                   </span>
                 </div>
                 {it.url && (
                   <div style={{ marginTop: 6 }}>
-                    <span className="rb-chip url" title={it.url}>
+                    <span
+                      className={'rb-chip url' + (filter.host === hostOf(it.url) ? ' rb-chip-active' : '')}
+                      onClick={() => onFilter('host', filter.host === hostOf(it.url) ? null : hostOf(it.url))}
+                    >
                       {shortUrl(it.url)}
                     </span>
                   </div>
