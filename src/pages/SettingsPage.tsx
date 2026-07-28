@@ -10,6 +10,7 @@ import {
   IonNote,
   IonPage,
   IonTitle,
+  IonToggle,
   IonToolbar,
   useIonToast,
 } from '@ionic/react';
@@ -17,6 +18,7 @@ import { qrCodeOutline, scanOutline } from 'ionicons/icons';
 import { IonIcon } from '@ionic/react';
 import { useApp } from '../App';
 import { loadConfig, loadSecret, loadVaultKey, saveConfig } from '../lib/config';
+import { loadGenerateShowWindow, setGenerateShowWindow } from '../lib/settings';
 import { makeQrDataUrl, parsePayload } from '../lib/pair';
 import { canScan, scanQr } from '../lib/scan';
 
@@ -25,6 +27,7 @@ export default function SettingsPage() {
   const [baseUrl, setBaseUrl] = useState('');
   const [apiKey, setApiKey] = useState('');
   const [qr, setQr] = useState<string | null>(null);
+  const [genShowWindow, setGenShowWindow] = useState(false);
   const [present] = useIonToast();
 
   // Sharing this device's QR only makes sense with a usable token — hide it when
@@ -36,7 +39,13 @@ export default function SettingsPage() {
       setBaseUrl(c.baseUrl);
       setApiKey(c.apiKey);
     });
+    loadGenerateShowWindow().then(setGenShowWindow);
   }, []);
+
+  const toggleGenShowWindow = async (on: boolean) => {
+    setGenShowWindow(on); // optimistic
+    await setGenerateShowWindow(on);
+  };
 
   const save = async () => {
     await saveConfig({ baseUrl, apiKey });
@@ -161,6 +170,26 @@ export default function SettingsPage() {
             </p>
           </div>
         )}
+
+        <div style={{ marginTop: 22 }}>
+          <div style={{ fontSize: 12.5, textTransform: 'uppercase', letterSpacing: 0.6, opacity: 0.6, margin: '0 0 6px 4px' }}>
+            Password generation
+          </div>
+          <IonItem>
+            <IonLabel className="ion-text-wrap">
+              Show the password window when generating
+              <IonNote className="rb-note" style={{ display: 'block', marginTop: 4 }}>
+                Off: a new password is generated, filled, and saved automatically — you're never asked. On: the Keeper
+                opens the prompt with the generated password so you can review, edit, or regenerate it before it fills.
+              </IonNote>
+            </IonLabel>
+            <IonToggle
+              slot="end"
+              checked={genShowWindow}
+              onIonChange={(e) => toggleGenShowWindow(e.detail.checked)}
+            />
+          </IonItem>
+        </div>
 
         <p className="rb-note" style={{ marginTop: 12 }}>
           Status: {connState}

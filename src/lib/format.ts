@@ -25,20 +25,41 @@ export function isSecretField(field?: string): boolean {
   );
 }
 
-// Generate a strong value in the Keeper (never produced by the agent). Honors a
-// numeric format and an optional length; defaults to 20 chars of an unambiguous set.
-export function generatePassword(field?: { length?: number; format?: string }): string {
+// Generate a strong value in the Keeper (never produced by the agent). Mirrors the
+// desktop genpassword.js policy so both keepers produce the same kind of password:
+//   - non-numeric: length >= 14 (agent may raise, never lower), capped at 128, with at
+//     least one a-z, A-Z and 0-9 guaranteed; symbols included unless `symbols: false`;
+//   - numeric (format numeric/digits/number): digits only at the requested length (the
+//     14 minimum does not apply — for PINs/codes).
+export const MIN_PASSWORD_LEN = 14;
+const _LOWER = 'abcdefghijklmnopqrstuvwxyz';
+const _UPPER = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
+const _DIGITS = '0123456789';
+const _SYMBOLS = '!@#$%^&*-_=+';
+// Unbiased index in [0, n) from crypto bytes (rejection sampling).
+function _randInt(n: number): number {
+  const a = new Uint32Array(1);
+  const limit = Math.floor(0xffffffff / n) * n;
+  const c = globalThis.crypto || (window as any).crypto;
+  do { c.getRandomValues(a); } while (a[0] >= limit);
+  return a[0] % n;
+}
+const _pick = (s: string) => s[_randInt(s.length)];
+export function generatePassword(field?: { length?: number; format?: string; symbols?: boolean }): string {
   const f = field || {};
-  const numeric = isNumericFormat(f.format);
-  const charset = numeric
-    ? '0123456789'
-    : 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnpqrstuvwxyz23456789!@#$%^&*-_=+';
-  const len = Number.isInteger(f.length) && (f.length as number) > 0 ? Math.min(f.length as number, 64) : 20;
-  const arr = new Uint32Array(len);
-  (globalThis.crypto || (window as any).crypto).getRandomValues(arr);
-  let out = '';
-  for (let i = 0; i < len; i++) out += charset[arr[i] % charset.length];
-  return out;
+  if (isNumericFormat(f.format)) {
+    const len = Math.max(1, Math.min(Number.isInteger(f.length) && (f.length as number) > 0 ? (f.length as number) : 6, 64));
+    let out = '';
+    for (let i = 0; i < len; i++) out += _pick(_DIGITS);
+    return out;
+  }
+  const pools = [_LOWER, _UPPER, _DIGITS, ...(f.symbols !== false ? [_SYMBOLS] : [])];
+  const all = pools.join('');
+  const len = Math.max(MIN_PASSWORD_LEN, Math.min(Number.isInteger(f.length) && (f.length as number) > 0 ? (f.length as number) : 20, 128));
+  const chars = pools.map(_pick); // one guaranteed from each mandatory pool
+  while (chars.length < len) chars.push(_pick(all));
+  for (let i = chars.length - 1; i > 0; i--) { const j = _randInt(i + 1); [chars[i], chars[j]] = [chars[j], chars[i]]; }
+  return chars.join('');
 }
 
 export function isNumericFormat(format?: string): boolean {

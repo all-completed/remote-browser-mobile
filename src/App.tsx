@@ -8,9 +8,11 @@ import { App as CapApp } from '@capacitor/app';
 import { keeper, type ConnState, type FillRequest } from './lib/keeperClient';
 import { foregroundService } from './lib/foregroundService';
 import { initPush } from './lib/push';
-import { keeperWsUrl, loadConfig, type Config } from './lib/config';
+import { keeperWsUrl, loadConfig, loadVaultKey, type Config } from './lib/config';
+import { generatePassword } from './lib/format';
 import { markAutofilled, saveScreenshot } from './lib/history';
-import { getSaved, hostFromUrl, mergeRemoteVault } from './lib/fieldStore';
+import { getSaved, hostFromUrl, mergeRemoteVault, saveValue } from './lib/fieldStore';
+import { loadGenerateShowWindow } from './lib/settings';
 import { syncVault, VaultKeyMismatch } from './lib/vault';
 import StatusPage from './pages/StatusPage';
 import HistoryPage from './pages/HistoryPage';
@@ -20,6 +22,33 @@ import CardsPage from './pages/CardsPage';
 import PromptModal from './components/PromptModal';
 
 const isCard = (field?: string) => String(field || '').toLowerCase().startsWith('card-');
+
+// When every field of a request is a generate-field (a new password), the Keeper creates
+// each value itself and answers WITHOUT ever asking the user (mirrors the desktop keeper's
+// tryAutofillGenerate). The generated value is never shown, so it's saved to the synced
+// vault by default (falling back to on-device when no vault key is held) with auto-fill on,
+// so it's backed up / refillable. Returns true when it handled the request. To have the
+// user type a password instead, the agent sends a normal (non-generate) request_fill.
+async function tryAutoGenerate(req: FillRequest, baseUrl: string): Promise<boolean> {
+  const fields = req.fields || [];
+  if (!fields.length || !fields.every((f) => f && f.generate && !isCard(f.field))) return false;
+  // Opt-out: when the user turned on "show the password window", generation isn't silent —
+  // fall through to the prompt so they can review/edit the generated value before it fills.
+  if (await loadGenerateShowWindow()) return false;
+  const host = hostFromUrl(req.url);
+  const session = req.session_id || '';
+  const scope = (await loadVaultKey().catch(() => null)) ? 'vault' : 'forever';
+  const out: { selector: string; value: string }[] = [];
+  for (const f of fields) {
+    const value = generatePassword(f);
+    out.push({ selector: f.selector, value });
+    if (host) await saveValue(baseUrl, session, host, f.selector, value, scope, true); // auto-fill next time
+  }
+  keeper.submit(req.request_id, out);
+  void markAutofilled(req.request_id); // History labels this "autofilled" (green)
+  if (req.screenshot) void saveScreenshot(req.request_id, req.screenshot);
+  return true;
+}
 
 // If every field already has a saved value flagged "fill automatically", answer the
 // request silently without showing the prompt (mirrors the desktop keeper).
@@ -125,6 +154,8 @@ export default function App() {
     });
     keeper.on('request', (req) => {
       void (async () => {
+        // Password generation is fully unattended — create + fill + save, never ask.
+        if (await tryAutoGenerate(req, baseUrlRef.current)) { void syncVaultNow(); return; }
         if (await tryAutoFill(req, baseUrlRef.current)) return;
         let added = false;
         setQueue((q) => {

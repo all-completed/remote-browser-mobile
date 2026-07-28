@@ -12,6 +12,7 @@ export interface FillField {
   length?: number;
   format?: string;
   generate?: boolean; // Keeper generates a strong value for this field (e.g. new password)
+  symbols?: boolean; // generated password may include symbols (default true; false = a-z/A-Z/0-9 only)
 }
 
 export interface FillRequest {
