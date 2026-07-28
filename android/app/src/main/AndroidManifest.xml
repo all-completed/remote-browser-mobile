@@ -47,4 +47,9 @@
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <!-- Lets the app ASK (the user still approves) to be exempt from Doze battery
+         optimization. Without that exemption Android defers even priority-"high"
+         FCM wake-pushes while the phone is idle, so a fill request can sit unseen
+         until the screen is next turned on. -->
+    <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
 </manifest>

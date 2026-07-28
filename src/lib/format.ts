@@ -45,6 +45,24 @@ function _randInt(n: number): number {
   return a[0] % n;
 }
 const _pick = (s: string) => s[_randInt(s.length)];
+// One value per KIND across a request, so "Password" + "Confirm password" match.
+// Mirrors the desktop keeper's generateSharedValues: if each field generated its
+// own value the confirmation could never match and the form would reject the
+// submit. Returns { [selector]: value } for the request's `generate` fields only.
+export function generateSharedPasswords(
+  fields: { selector: string; generate?: boolean; length?: number; format?: string; symbols?: boolean }[],
+): Record<string, string> {
+  const out: Record<string, string> = {};
+  const perKind: Record<string, string> = {};
+  for (const f of fields || []) {
+    if (!f || !f.generate) continue;
+    const kind = isNumericFormat(f.format) ? 'numeric' : 'text';
+    if (!(kind in perKind)) perKind[kind] = generatePassword(f);
+    out[f.selector] = perKind[kind];
+  }
+  return out;
+}
+
 export function generatePassword(field?: { length?: number; format?: string; symbols?: boolean }): string {
   const f = field || {};
   if (isNumericFormat(f.format)) {

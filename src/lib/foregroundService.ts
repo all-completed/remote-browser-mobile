@@ -9,6 +9,8 @@ interface KeeperServicePlugin {
   notifyRequest(opts: { title: string; body: string }): Promise<void>;
   clearAlert(): Promise<void>;
   setStatus(opts: { text: string }): Promise<void>;
+  isBatteryOptimizationIgnored(): Promise<{ ignored: boolean }>;
+  requestIgnoreBatteryOptimization(): Promise<{ ignored: boolean; prompted: boolean }>;
 }
 
 const Native = registerPlugin<KeeperServicePlugin>('KeeperService');
@@ -57,6 +59,31 @@ export const foregroundService = {
       await Native.setStatus({ text });
     } catch {
       /* ignore */
+    }
+  },
+
+  // ---- Doze exemption ------------------------------------------------------
+  // Wake-pushes are already sent at FCM priority "high", but Android still DEFERS
+  // them for battery-optimized apps that are idle — which is why a request can go
+  // unnoticed until the screen is next turned on. Exempting the app is what makes
+  // "wake every time" actually hold.
+  async isBatteryOptimizationIgnored(): Promise<boolean> {
+    if (!isAndroid()) return true;
+    try {
+      return !!(await Native.isBatteryOptimizationIgnored()).ignored;
+    } catch {
+      return true; // unknown → don't nag
+    }
+  },
+  // Opens the system consent dialog. The user must approve; an app cannot grant
+  // this to itself. No-op when already exempt, so calling on launch is safe.
+  async requestIgnoreBatteryOptimization(): Promise<boolean> {
+    if (!isAndroid()) return true;
+    try {
+      return !!(await Native.requestIgnoreBatteryOptimization()).ignored;
+    } catch (e) {
+      console.warn('[keeper] battery-optimization request failed', e);
+      return false;
     }
   },
 };

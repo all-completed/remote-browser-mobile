@@ -9,7 +9,7 @@ import { keeper, type ConnState, type FillRequest } from './lib/keeperClient';
 import { foregroundService } from './lib/foregroundService';
 import { initPush } from './lib/push';
 import { keeperWsUrl, loadConfig, loadVaultKey, type Config } from './lib/config';
-import { generatePassword } from './lib/format';
+import { generateSharedPasswords } from './lib/format';
 import { markAutofilled, saveScreenshot } from './lib/history';
 import { getSaved, hostFromUrl, mergeRemoteVault, saveValue } from './lib/fieldStore';
 import { loadGenerateShowWindow } from './lib/settings';
@@ -38,9 +38,11 @@ async function tryAutoGenerate(req: FillRequest, baseUrl: string): Promise<boole
   const host = hostFromUrl(req.url);
   const session = req.session_id || '';
   const scope = (await loadVaultKey().catch(() => null)) ? 'vault' : 'forever';
+  // Shared per kind so "Password" + "Confirm password" in one request match.
+  const shared = generateSharedPasswords(fields);
   const out: { selector: string; value: string }[] = [];
   for (const f of fields) {
-    const value = generatePassword(f);
+    const value = shared[f.selector];
     out.push({ selector: f.selector, value });
     if (host) await saveValue(baseUrl, session, host, f.selector, value, scope, true); // auto-fill next time
   }
@@ -131,8 +133,20 @@ export default function App() {
     keeper.connect();
     // Once paired, keep a persistent tray notification (Android) so the Keeper stays
     // alive in the background and keeps answering requests; drop it when unpaired.
-    if (cfg.baseUrl && cfg.apiKey) void foregroundService.start();
-    else void foregroundService.stop();
+    if (cfg.baseUrl && cfg.apiKey) {
+      void foregroundService.start();
+      // Once paired, make sure Doze can't sit on our wake-pushes. Android defers
+      // even priority-"high" FCM for optimized idle apps, which is exactly how a
+      // request goes unseen until the screen comes on. No-op once granted, so
+      // this asks at most once (the system dialog stops appearing after consent).
+      void (async () => {
+        if (!(await foregroundService.isBatteryOptimizationIgnored())) {
+          await foregroundService.requestIgnoreBatteryOptimization();
+        }
+      })();
+    } else {
+      void foregroundService.stop();
+    }
   }, []);
 
   useEffect(() => {

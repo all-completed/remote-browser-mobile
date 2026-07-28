@@ -8,10 +8,14 @@ import android.app.PendingIntent;
 import android.content.Context;
 import android.content.Intent;
 import android.os.Build;
+import android.provider.Settings;
+import android.os.PowerManager;
+import android.net.Uri;
 
 import androidx.core.app.NotificationCompat;
 
 import com.getcapacitor.PermissionState;
+import com.getcapacitor.JSObject;
 import com.getcapacitor.Plugin;
 import com.getcapacitor.PluginCall;
 import com.getcapacitor.PluginMethod;
@@ -65,6 +69,66 @@ public class KeeperServicePlugin extends Plugin {
     public void stop(PluginCall call) {
         getContext().stopService(new Intent(getContext(), KeeperService.class));
         call.resolve();
+    }
+
+    /**
+     * Whether this app is exempt from Doze battery optimization.
+     *
+     * WHY IT MATTERS: the wake-push is already sent at FCM priority "high", but
+     * Android still defers delivery for apps that are optimized and idle — so a
+     * request can sit unseen until the user happens to open the phone. Exempt
+     * apps get the push immediately, every time. Below Android M there is no
+     * Doze, so report true.
+     */
+    @PluginMethod
+    public void isBatteryOptimizationIgnored(PluginCall call) {
+        JSObject ret = new JSObject();
+        ret.put("ignored", isIgnoringOptimizations());
+        call.resolve(ret);
+    }
+
+    private boolean isIgnoringOptimizations() {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.M) return true;
+        PowerManager pm = (PowerManager) getContext().getSystemService(Context.POWER_SERVICE);
+        return pm != null && pm.isIgnoringBatteryOptimizations(getContext().getPackageName());
+    }
+
+    /**
+     * Ask the system to exempt us from battery optimization. Opens the standard
+     * consent dialog — the user must approve; an app cannot grant this itself.
+     * No-op when already exempt, so it is safe to call on every launch.
+     */
+    @PluginMethod
+    public void requestIgnoreBatteryOptimization(PluginCall call) {
+        JSObject ret = new JSObject();
+        if (isIgnoringOptimizations()) {
+            ret.put("ignored", true);
+            ret.put("prompted", false);
+            call.resolve(ret);
+            return;
+        }
+        try {
+            Intent intent = new Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS);
+            intent.setData(Uri.parse("package:" + getContext().getPackageName()));
+            intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+            getContext().startActivity(intent);
+            ret.put("ignored", false);
+            ret.put("prompted", true);
+        } catch (Exception e) {
+            // Some OEM builds hide the direct-request intent; fall back to the
+            // app's settings screen so the user can still find the toggle.
+            try {
+                Intent fallback = new Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS);
+                fallback.setData(Uri.parse("package:" + getContext().getPackageName()));
+                fallback.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+                getContext().startActivity(fallback);
+                ret.put("prompted", true);
+            } catch (Exception ignored) {
+                ret.put("prompted", false);
+            }
+            ret.put("ignored", false);
+        }
+        call.resolve(ret);
     }
 
     // -- Incoming-request alert (heads-up notification with sound + vibration) --

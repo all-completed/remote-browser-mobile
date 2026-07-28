@@ -6,7 +6,7 @@ import {
   fieldInputMode,
   fieldMaxLen,
   formatFieldInput,
-  generatePassword,
+  generateSharedPasswords,
   isMultilineField,
   isSecretField,
   shortUrl,
@@ -49,14 +49,10 @@ export default function PromptModal({ request, baseUrl, onSubmit, onCancel }: Pr
     setSavedExisting(false);
     setDontAsk(false);
     // Generate fresh strong values for generate-fields; default to saving them.
-    const genInit: Record<string, string> = {};
-    let hasGen = false;
-    for (const f of fields) {
-      if (f.generate && !isCard(f.field)) {
-        genInit[f.selector] = generatePassword(f);
-        hasGen = true;
-      }
-    }
+    // Shared per kind, so a "Confirm password" field gets the SAME value as the
+    // password it confirms (otherwise the form rejects every submission).
+    const genInit = generateSharedPasswords(fields.filter((f) => !isCard(f.field)));
+    const hasGen = Object.keys(genInit).length > 0;
     if (hasGen) {
       setValues((m) => ({ ...m, ...genInit }));
       setDontAsk(true);
@@ -201,7 +197,11 @@ export default function PromptModal({ request, baseUrl, onSubmit, onCancel }: Pr
                 {isGen ? (
                   <IonButton
                     fill="outline"
-                    onClick={() => setValues((m) => ({ ...m, [f.selector]: generatePassword(f) }))}
+                    // Regenerate the whole group: a password and its confirmation
+                    // must stay identical or the form rejects the submit.
+                    onClick={() => setValues((m) => ({
+                      ...m, ...generateSharedPasswords(fields.filter((x) => !isCard(x.field))),
+                    }))}
                     aria-label="Generate a new one"
                   >
                     ↻
