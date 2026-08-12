@@ -1,20 +1,14 @@
 <svg width="1024" height="1024" viewBox="0 0 1024 1024" xmlns="http://www.w3.org/2000/svg">
-  <!-- Remote Browser Keeper icon: a gold key-in-shield inside a browser window,
-       on a royal-blue gradient. A guardian delivering secrets into a remote browser. -->
-  <defs>
-    <linearGradient id="bg" x1="0" y1="0" x2="1024" y2="1024" gradientUnits="userSpaceOnUse">
-      <stop offset="0" stop-color="#2F7DFF"/>
-      <stop offset="1" stop-color="#0A1F4D"/>
-    </linearGradient>
-    <linearGradient id="gold" x1="392" y1="406" x2="632" y2="702" gradientUnits="userSpaceOnUse">
-      <stop offset="0" stop-color="#FCE9A6"/>
-      <stop offset="0.5" stop-color="#F4C656"/>
-      <stop offset="1" stop-color="#DB9E2C"/>
-    </linearGradient>
-  </defs>
+  <!-- Remote Browser Keeper icon: a gold key-in-shield inside a browser window, on
+       royal blue. A guardian delivering secrets into a remote browser.
+
+       FLAT BY DESIGN: solid colours only — no gradients, no simulated volume, no
+       painted drop shadow. The platforms add their own depth. #1C4EA6 is the midpoint
+       of the retired #2F7DFF→#0A1F4D background gradient; #F4C656 is the middle stop
+       of the retired three-stop gold. -->
 
   <!-- background -->
-  <rect x="0" y="0" width="1024" height="1024" rx="208" fill="url(#bg)"/>
+  <rect x="0" y="0" width="1024" height="1024" rx="208" fill="#1C4EA6"/>
 
   <!-- browser window (white outline) -->
   <g fill="none" stroke="#F4F7FF" stroke-width="17" stroke-linejoin="round">
@@ -27,7 +21,7 @@
     <circle cx="372" cy="333" r="9.5"/>
   </g>
 
-  <!-- shield (gold outline; blue shows through) -->
+  <!-- shield (gold outline; the background shows through) -->
   <path d="M392 430
            C392 414 404 406 418 406
            L606 406
@@ -35,14 +29,14 @@
            L632 560
            C632 644 578 682 512 706
            C446 682 392 644 392 560 Z"
-        fill="none" stroke="url(#gold)" stroke-width="24" stroke-linejoin="round"/>
+        fill="none" stroke="#F4C656" stroke-width="24" stroke-linejoin="round"/>
 
-  <!-- key (gold) -->
-  <g fill="url(#gold)">
+  <!-- key (gold): the bow is a ring so its hole is a real hole, not a painted-on
+       darker blue — that keeps it correct on the transparent adaptive foreground -->
+  <g fill="#F4C656">
     <path d="M499 540 h26 v86 h-26 z"/>
     <rect x="525" y="588" width="22" height="15"/>
     <rect x="525" y="611" width="15" height="13"/>
   </g>
-  <circle cx="512" cy="503" r="45" fill="url(#gold)"/>
-  <circle cx="512" cy="503" r="18" fill="#13317A"/>
+  <circle cx="512" cy="503" r="31.5" fill="none" stroke="#F4C656" stroke-width="27"/>
 </svg>

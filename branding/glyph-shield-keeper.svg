@@ -1,0 +1,21 @@
+<svg width="24" height="24" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+  <!-- The Keeper glyph: a shield with a keyhole, drawn as line art (stroke, no fill)
+       so it stays legible at status-bar / menu-bar size.
+
+       ONE GLYPH, RENDERED TWICE. This file is the canonical drawing; the two
+       platform copies must keep the same path data:
+         - Android status bar: android/app/src/main/res/drawable/ic_stat_keeper.xml
+           (VectorDrawable, white-on-transparent, android:tint="#FFFFFF")
+         - macOS menu bar: src/assets/tray.svg in all-completed/remote-browser-keeper
+           (black-on-transparent template image)
+       Both platforms tint the glyph themselves, so the colour here is only a stand-in;
+       black matches the macOS template-image convention. -->
+  <g fill="none" stroke="#000" stroke-linejoin="round" stroke-linecap="round">
+    <!-- Shield outline -->
+    <path stroke-width="2"
+          d="M12,2.6 L19.4,5.4 V11.2 C19.4,15.7 16.3,19.3 12,20.7 C7.7,19.3 4.6,15.7 4.6,11.2 V5.4 Z"/>
+    <!-- Keyhole: ring + stem -->
+    <path stroke-width="1.7"
+          d="M9.6,9.3 A2.4,2.4 0 0,1 14.4,9.3 A2.4,2.4 0 0,1 9.6,9.3 Z M12,11.7 V15.6"/>
+  </g>
+</svg>
