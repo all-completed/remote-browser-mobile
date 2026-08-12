@@ -17,7 +17,16 @@ import {
 } from '@ionic/react';
 import type { RefresherEventDetail } from '@ionic/react';
 import { useApp } from '../App';
-import { fetchHistory, getAutofilledIds, readScreenshot, reconcileScreenshots, type HistoryItem } from '../lib/history';
+import {
+  fetchHistory,
+  fetchScreenshot,
+  getAutofilledIds,
+  listCachedScreenshotIds,
+  readScreenshot,
+  reconcileScreenshots,
+  saveScreenshot,
+  type HistoryItem,
+} from '../lib/history';
 import { relTime, absTime, shortUrl } from '../lib/format';
 import ImageModal from '../components/ImageModal';
 
@@ -42,6 +51,11 @@ export default function HistoryPage() {
   const [error, setError] = useState('');
   const [zoom, setZoom] = useState<string | null>(null);
   const [autoIds, setAutoIds] = useState<Set<string>>(new Set());
+  // request_ids with a screenshot cached on this device. Needed alongside the
+  // server's `has_screenshot` flag: records written before the service retained
+  // proofs carry no flag, yet this device may still hold the image it captured.
+  const [cachedIds, setCachedIds] = useState<Set<string>>(new Set());
+  const [shotBusy, setShotBusy] = useState<string | null>(null); // request_id being fetched
   // Tap a session/host chip to narrow the list; tap the active one to clear.
   // Purely client-side over the already-fetched page — no refetch.
   const [filter, setFilter] = useState<{ session: string | null; host: string | null }>({ session: null, host: null });
@@ -67,7 +81,11 @@ export default function HistoryPage() {
       setAutoIds(await getAutofilledIds());
       const list = await fetchHistory(config.baseUrl, config.apiKey);
       setItems(list);
-      void reconcileScreenshots(new Set(list.map((i) => i.request_id)));
+      // Off the critical path, but ordered: prune first, then record what survived.
+      void (async () => {
+        await reconcileScreenshots(new Set(list.map((i) => i.request_id)));
+        setCachedIds(await listCachedScreenshotIds());
+      })();
     } catch (e: any) {
       setError(e?.message || 'Failed to load history');
     } finally {
@@ -80,10 +98,33 @@ export default function HistoryPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [config.apiKey, config.baseUrl]);
 
+  // Local cache first (instant, works offline), then the service's proof endpoint —
+  // which is the only way to see a fill performed on another device.
   const openShot = async (id: string) => {
-    const d = await readScreenshot(id);
-    if (d) setZoom(d);
-    else present({ message: 'Screenshot not stored on this device', duration: 1500, position: 'bottom' });
+    const local = await readScreenshot(id);
+    if (local) {
+      setZoom(local);
+      return;
+    }
+    setShotBusy(id);
+    try {
+      const r = await fetchScreenshot(config.baseUrl, config.apiKey, id);
+      if (r.ok) {
+        setZoom(r.dataUrl);
+        void saveScreenshot(id, r.dataUrl); // cache it — next view is instant and offline
+        setCachedIds((s) => new Set(s).add(id));
+      } else {
+        present({
+          message: r.reason === 'absent'
+            ? 'No screenshot was captured for this request'
+            : "Couldn't load screenshot — check your connection",
+          duration: 2000,
+          position: 'bottom',
+        });
+      }
+    } finally {
+      setShotBusy(null);
+    }
   };
 
   return (
@@ -176,9 +217,19 @@ export default function HistoryPage() {
                     {it.message}
                   </div>
                 )}
-                <IonButton size="small" fill="outline" style={{ marginTop: 8 }} onClick={() => openShot(it.request_id)}>
-                  View screenshot
-                </IonButton>
+                {/* Only offered when an image actually exists somewhere — the server
+                    says so, or we still hold the one this device captured. */}
+                {(it.has_screenshot || cachedIds.has(it.request_id)) && (
+                  <IonButton
+                    size="small"
+                    fill="outline"
+                    style={{ marginTop: 8 }}
+                    disabled={shotBusy === it.request_id}
+                    onClick={() => openShot(it.request_id)}
+                  >
+                    {shotBusy === it.request_id ? <IonSpinner name="dots" style={{ height: 16 }} /> : 'View screenshot'}
+                  </IonButton>
+                )}
               </IonCardContent>
             </IonCard>
           );

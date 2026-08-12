@@ -1,7 +1,9 @@
 // Request history. The list comes from the server (rb/{user_id}/keeper-history.jsonl
 // via GET /api/sessions/fill-history) — status + field metadata only, never values.
 // Proof screenshots are cached locally per request_id and evicted by reconciling
-// against the server list.
+// against the server list; the service keeps the durable copy (rb/{user_id}/
+// keeper-proofs/{request_id}.jpg) and serves it, so anything missing locally —
+// a fill done on the desktop Keeper, or a cache we pruned — is still viewable.
 import { CapacitorHttp } from '@capacitor/core';
 import { Filesystem, Directory } from '@capacitor/filesystem';
 import { Preferences } from '@capacitor/preferences';
@@ -23,6 +25,10 @@ export interface HistoryItem {
   fields?: HistoryField[];
   created_at?: number;
   completed_at?: number;
+  // Set by the service only when a proof screenshot was actually written for this
+  // request; absent means there is nothing to fetch (records predating proof
+  // retention never carry it either).
+  has_screenshot?: boolean;
 }
 
 const SHOT_DIR = 'screenshots';
@@ -105,18 +111,70 @@ export async function readScreenshot(requestId: string): Promise<string | null> 
   }
 }
 
-/** Delete cached screenshots whose request_id is no longer in the server history. */
+/** 'absent' = the server confirms there is no proof; 'error' = we couldn't ask it. */
+export type ScreenshotResult =
+  | { ok: true; dataUrl: string }
+  | { ok: false; reason: 'absent' | 'error' };
+
+/**
+ * Fetch the proof screenshot from the service. Works for fills performed on ANY
+ * device (the desktop Keeper, another phone) — the WS `fill_request` frame only
+ * ever reaches the device that was connected at the time.
+ */
+export async function fetchScreenshot(baseUrl: string, apiKey: string, requestId: string): Promise<ScreenshotResult> {
+  const id = safeId(requestId);
+  if (!id || !apiKey) return { ok: false, reason: 'absent' };
+  const url = baseUrl.replace(/\/+$/, '') + '/api/sessions/fill-history/' + id + '/screenshot';
+  let res;
+  try {
+    res = await CapacitorHttp.get({
+      url,
+      headers: { Authorization: 'Bearer ' + apiKey },
+      responseType: 'blob', // JPEG bytes come back base64-encoded in `data`
+      connectTimeout: 15000,
+      readTimeout: 15000,
+    });
+  } catch {
+    return { ok: false, reason: 'error' }; // offline / DNS / TLS — not a verdict
+  }
+  // 404 is the service's "expired, or none was ever captured" — the only honest
+  // "nothing to show". Anything else non-2xx (401, 5xx) is a failure to ask.
+  if (res.status === 404) return { ok: false, reason: 'absent' };
+  if (res.status < 200 || res.status >= 300) return { ok: false, reason: 'error' };
+  // Android encodes with Base64.DEFAULT, which line-wraps; strip the whitespace.
+  const b64 = (typeof res.data === 'string' ? res.data : '').replace(/\s+/g, '');
+  if (!b64) return { ok: false, reason: 'error' };
+  return { ok: true, dataUrl: 'data:image/jpeg;base64,' + b64 };
+}
+
+/** request_ids whose proof screenshot is cached on this device. */
+export async function listCachedScreenshotIds(): Promise<Set<string>> {
+  const ids = new Set<string>();
+  for (const name of await listShotFiles()) ids.add(name.slice(0, -4));
+  return ids;
+}
+
+/**
+ * Delete cached screenshots whose request_id is no longer in the server history.
+ * Kept deliberately: the local file is now only a cache — the service holds the
+ * durable proof for as long as it holds the history record, so pruning costs a
+ * round-trip on the next view, never the image itself.
+ */
 export async function reconcileScreenshots(keepIds: Set<string>): Promise<void> {
+  for (const name of await listShotFiles()) {
+    if (!keepIds.has(name.slice(0, -4))) {
+      await Filesystem.deleteFile({ path: `${SHOT_DIR}/${name}`, directory: Directory.Data }).catch(() => {});
+    }
+  }
+}
+
+async function listShotFiles(): Promise<string[]> {
   try {
     const r = await Filesystem.readdir({ path: SHOT_DIR, directory: Directory.Data });
-    for (const entry of r.files) {
-      const name = typeof entry === 'string' ? entry : (entry as any).name;
-      if (!name || !name.endsWith('.jpg')) continue;
-      if (!keepIds.has(name.slice(0, -4))) {
-        await Filesystem.deleteFile({ path: `${SHOT_DIR}/${name}`, directory: Directory.Data }).catch(() => {});
-      }
-    }
+    return r.files
+      .map((entry) => (typeof entry === 'string' ? entry : (entry as any).name))
+      .filter((name): name is string => !!name && name.endsWith('.jpg'));
   } catch {
-    /* dir may not exist yet */
+    return []; // dir may not exist yet
   }
 }

@@ -21,8 +21,11 @@ The model only ever learns the request *status*, never the value.
   constraints). The values are sent back over the same socket; the **service**
   types them into the page.
 - **History** lists past requests (status + field metadata only — never values)
-  from `GET /api/sessions/fill-history`; proof screenshots are cached locally and
-  can be opened full-size.
+  from `GET /api/sessions/fill-history`. A proof screenshot opens full-size from the
+  local cache when this device captured one, otherwise from
+  `GET /api/sessions/fill-history/{request_id}/screenshot` — so a fill performed on
+  another Keeper (or one whose local cache was pruned) is still viewable. The record's
+  `has_screenshot` flag decides whether the button is offered at all.
 - **Saved fields** can be kept in three scopes: *until the app restarts* (memory),
   *keep on this device* (`@capacitor/preferences`), or **Save to vault (synced
   across devices)** — end-to-end encrypted with the session `secret` and synced to
