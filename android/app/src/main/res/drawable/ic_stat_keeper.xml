@@ -4,23 +4,16 @@
     android:viewportWidth="24"
     android:viewportHeight="24"
     android:tint="#FFFFFF">
-    <!-- Shield with a keyhole — "keeper is watching". Line art, not a silhouette: a
-         solid shield reads as an undifferentiated lump next to the other tray glyphs.
-         Status-bar icons must be a flat white-on-transparent glyph; Android tints it.
+    <!-- Shield with a keyhole — "keeper is watching". Solid silhouette with the keyhole
+         punched out via even-odd, not line art: a status-bar icon is an alpha mask a few
+         pixels across, and two thin concentric strokes turn to mush there while the mass
+         reads instantly. Android tints it; only the alpha survives.
          Same drawing as branding/glyph-shield-keeper.svg and the macOS tray glyph —
-         keep the path data in sync. -->
+         keep the path data in sync.
+         NOTE: android:fillType="evenOdd" needs API 24; on 22/23 the keyhole fills in and
+         the glyph degrades to a plain shield. -->
     <path
-        android:fillColor="#00000000"
-        android:strokeColor="#FFFFFF"
-        android:strokeWidth="2"
-        android:strokeLineJoin="round"
-        android:strokeLineCap="round"
-        android:pathData="M12,2.6L19.4,5.4V11.2C19.4,15.7 16.3,19.3 12,20.7C7.7,19.3 4.6,15.7 4.6,11.2V5.4Z" />
-    <path
-        android:fillColor="#00000000"
-        android:strokeColor="#FFFFFF"
-        android:strokeWidth="1.7"
-        android:strokeLineJoin="round"
-        android:strokeLineCap="round"
-        android:pathData="M9.6,9.3A2.4,2.4 0 0,1 14.4,9.3A2.4,2.4 0 0,1 9.6,9.3Z M12,11.7V15.6" />
+        android:fillColor="#FFFFFF"
+        android:fillType="evenOdd"
+        android:pathData="M12,1.35L21,4.5V12C21,18 12,22.65 12,22.65C12,22.65 3,18 3,12V4.5Z M12,6.9C10.275,6.9 8.925,8.25 8.925,9.9C8.925,11.025 9.525,12 10.425,12.6L9.525,16.65H14.475L13.575,12.6C14.475,12 15.075,11.025 15.075,9.9C15.075,8.25 13.725,6.9 12,6.9Z" />
 </vector>

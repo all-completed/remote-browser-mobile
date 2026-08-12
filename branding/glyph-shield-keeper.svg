@@ -1,6 +1,10 @@
 <svg width="24" height="24" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-  <!-- The Keeper glyph: a shield with a keyhole, drawn as line art (stroke, no fill)
-       so it stays legible at status-bar / menu-bar size.
+  <!-- The Keeper glyph: a solid shield with the keyhole cut out (even-odd fill).
+
+       Solid, not line art. An outlined version shipped briefly and was rejected on
+       sight at menu-bar / status-bar size: the two thin concentric strokes (shield
+       edge + keyhole ring) fight each other in ~16 px, while the silhouette reads
+       instantly. The mass IS the mark — see all-completed/remote-browser-keeper#5.
 
        ONE GLYPH, RENDERED TWICE. This file is the canonical drawing; the two
        platform copies must keep the same path data:
@@ -10,12 +14,7 @@
            (black-on-transparent template image)
        Both platforms tint the glyph themselves, so the colour here is only a stand-in;
        black matches the macOS template-image convention. -->
-  <g fill="none" stroke="#000" stroke-linejoin="round" stroke-linecap="round">
-    <!-- Shield outline -->
-    <path stroke-width="2"
-          d="M12,2.6 L19.4,5.4 V11.2 C19.4,15.7 16.3,19.3 12,20.7 C7.7,19.3 4.6,15.7 4.6,11.2 V5.4 Z"/>
-    <!-- Keyhole: ring + stem -->
-    <path stroke-width="1.7"
-          d="M9.6,9.3 A2.4,2.4 0 0,1 14.4,9.3 A2.4,2.4 0 0,1 9.6,9.3 Z M12,11.7 V15.6"/>
-  </g>
+  <path fill="#000" fill-rule="evenodd" d="
+    M12 1.35 L21 4.5 V12 C21 18 12 22.65 12 22.65 C12 22.65 3 18 3 12 V4.5 Z
+    M12 6.9 C10.275 6.9 8.925 8.25 8.925 9.9 C8.925 11.025 9.525 12 10.425 12.6 L9.525 16.65 H14.475 L13.575 12.6 C14.475 12 15.075 11.025 15.075 9.9 C15.075 8.25 13.725 6.9 12 6.9 Z"/>
 </svg>
