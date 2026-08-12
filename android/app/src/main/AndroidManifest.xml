@@ -39,6 +39,17 @@
             android:name=".KeeperService"
             android:exported="false"
             android:foregroundServiceType="dataSync" />
+
+        <!-- Status-bar icon for notifications Firebase posts itself — i.e. the wake-push
+             that arrives while the app is backgrounded or killed, which never reaches our
+             own NotificationCompat builders. Without this Android falls back to the
+             launcher icon and, because a status-bar icon is an alpha mask, renders the
+             square launcher art as a featureless white blob. The two notifications we
+             build ourselves (KeeperService's ongoing one and the in-app alert) already
+             set the same drawable via setSmallIcon. -->
+        <meta-data
+            android:name="com.google.firebase.messaging.default_notification_icon"
+            android:resource="@drawable/ic_stat_keeper" />
     </application>
 
     <!-- Permissions -->
