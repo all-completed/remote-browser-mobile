@@ -170,6 +170,58 @@ export async function expectedSecretId(key: VaultKey, b64: string, format?: stri
   return fmt === FORMAT_V1 ? hex(master) : secretIdFromMaster(master);
 }
 
+// ---- inert report: WHICH vault this device is holding (never the key) ----
+//
+// Reported on the wire (keeperClient's hello / device_info) and shown in Settings. The
+// one sharp edge lives here, in the single place that knows the formats: under v2 the
+// secret_id is an opaque domain-separated tag (safe to publish — it is what lets the
+// service group devices by vault), but under legacy aesgcm-sha256-v1 the id IS the AES
+// key (see expectedSecretId below), so a v1 device reports its format and NO id.
+//
+// `format` and `key_format` are the same value under two names, deliberately: the service
+// reads `vault.format` (remote-browser-service server/keeper.py, sanitize_device_info),
+// while the desktop Keeper's report calls it `key_format` (remote-browser-keeper
+// src/vault.js vaultKeyReport). Sending both keeps one payload readable by both.
+export interface VaultKeyReport {
+  schema: number;
+  has_key: boolean;
+  format: string | null;
+  key_format: string | null;
+  legacy: boolean; // on the decrypt-only v1 key model → needs migration
+  secret_id: string | null; // v2 only; always null for v1 (it would be the key)
+}
+
+export async function vaultKeyReport(key?: VaultKey | null): Promise<VaultKeyReport> {
+  const base: VaultKeyReport = { schema: VAULT_SCHEMA, has_key: false, format: null, key_format: null, legacy: false, secret_id: null };
+  if (!key || typeof key.password !== 'string' || !key.password) return base;
+  const fmt: string = key.format || FORMAT_SHA256_V2;
+  // SECURITY: v1's secret_id is the AES key — report the format, never the id.
+  if (fmt === FORMAT_V1) return { ...base, has_key: true, format: fmt, key_format: fmt, legacy: true };
+  let secret_id: string | null = null;
+  try {
+    const salt = fmt === FORMAT_PBKDF2_V2 ? b64ToBytes(String(key.salt || '')) : undefined;
+    secret_id = await secretIdFromMaster(await masterFor(fmt, key.password, salt));
+  } catch {
+    secret_id = null; // e.g. a pbkdf2 key whose salt was lost — report the format anyway
+  }
+  return { ...base, has_key: true, format: fmt, key_format: fmt, secret_id };
+}
+
+// The single field to act on. It keeps apart two failures that look alike from outside
+// but need opposite fixes: holding no key at all, and holding a key that no longer opens
+// the stored vault (VaultKeyMismatch — the password was changed on another device).
+//   no_key       — no vault key on this device (never paired with one, or it was cleared)
+//   needs_repair — a vault exists but this device cannot decrypt it → re-pair
+//   legacy_v1    — on the legacy aesgcm-sha256-v1 key model → migrate
+//   ok           — on a v2 key model and in sync
+export type VaultState = 'no_key' | 'needs_repair' | 'legacy_v1' | 'ok';
+
+export function vaultState(report: VaultKeyReport, needsRepair = false): VaultState {
+  if (!report.has_key) return 'no_key';
+  if (needsRepair) return 'needs_repair';
+  return report.legacy ? 'legacy_v1' : 'ok';
+}
+
 // Per-entry last-write-wins merge (higher updated_at wins; tie → remote), so two devices
 // always converge. Live entries and { deleted, updated_at } tombstones compare the same
 // way, letting deletes propagate.
