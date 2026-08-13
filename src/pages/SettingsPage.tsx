@@ -22,8 +22,18 @@ import { loadGenerateShowWindow, setGenerateShowWindow } from '../lib/settings';
 import { makeQrDataUrl, parsePayload } from '../lib/pair';
 import { canScan, scanQr } from '../lib/scan';
 
+// What this device's vault state means, and what the user can do about it. The four states
+// come from vaultState() (src/lib/vaultCrypto.ts) — in particular "no vault key at all" and
+// "holds a vault it cannot decrypt" are different problems with different fixes.
+const VAULT_STATE_TEXT: Record<string, { text: string; bad?: boolean }> = {
+  ok: { text: 'In sync — current key model (v2).' },
+  no_key: { text: 'No vault key on this device — saved values stay on this phone. Scan the desktop Keeper’s QR to receive one.' },
+  needs_repair: { text: 'This device holds a vault key that no longer opens the stored vault — the vault password was changed on another device. Re-pair to update it.', bad: true },
+  legacy_v1: { text: 'Legacy key model — needs migration. Re-pair from a device on the v2 key model to re-encrypt this vault.', bad: true },
+};
+
 export default function SettingsPage() {
-  const { reloadConfig, connState } = useApp();
+  const { reloadConfig, connState, deviceReport } = useApp();
   const [baseUrl, setBaseUrl] = useState('');
   const [apiKey, setApiKey] = useState('');
   const [qr, setQr] = useState<string | null>(null);
@@ -190,6 +200,56 @@ export default function SettingsPage() {
             />
           </IonItem>
         </div>
+
+        {/* Who this device is and which vault it holds — answerable without the service.
+            The same report is what goes on the wire (src/lib/device.ts); nothing here is
+            secret: no vault password, no derived key, and no vault id for a legacy key. */}
+        {deviceReport && (
+          <div style={{ marginTop: 22 }}>
+            <div style={{ fontSize: 12.5, textTransform: 'uppercase', letterSpacing: 0.6, opacity: 0.6, margin: '0 0 6px 4px' }}>
+              This device
+            </div>
+            <IonItem>
+              <IonLabel className="ion-text-wrap">
+                {deviceReport.device.name}
+                <IonNote className="rb-note" style={{ display: 'block', marginTop: 4 }}>
+                  {deviceReport.device.platform} · v{deviceReport.device.app_version}
+                </IonNote>
+                <IonNote className="rb-note" style={{ display: 'block', marginTop: 2 }}>
+                  Device ID {deviceReport.device.id}
+                </IonNote>
+              </IonLabel>
+            </IonItem>
+            <IonItem>
+              <IonLabel className="ion-text-wrap">
+                Vault
+                <IonNote className="rb-note" style={{ display: 'block', marginTop: 4 }}>
+                  {deviceReport.vault.has_key
+                    ? `schema ${deviceReport.vault.schema} · ${deviceReport.vault.key_format}` +
+                      (deviceReport.vault.version != null ? ` · version ${deviceReport.vault.version}` : ' · not synced yet')
+                    : 'No vault key held'}
+                </IonNote>
+                {/* v2 only: under legacy v1 this id IS the encryption key, so there is
+                    none to show (src/lib/vaultCrypto.ts's vaultKeyReport). */}
+                {deviceReport.vault.secret_id && (
+                  <IonNote className="rb-note" style={{ display: 'block', marginTop: 2 }}>
+                    Vault ID {deviceReport.vault.secret_id}
+                  </IonNote>
+                )}
+                <IonNote
+                  className="rb-note"
+                  style={{
+                    display: 'block',
+                    marginTop: 6,
+                    ...(VAULT_STATE_TEXT[deviceReport.vault.state]?.bad ? { color: 'var(--ion-color-danger, #eb445a)' } : {}),
+                  }}
+                >
+                  {VAULT_STATE_TEXT[deviceReport.vault.state]?.text || deviceReport.vault.state}
+                </IonNote>
+              </IonLabel>
+            </IonItem>
+          </div>
+        )}
 
         <p className="rb-note" style={{ marginTop: 12 }}>
           Status: {connState}

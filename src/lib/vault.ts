@@ -106,6 +106,14 @@ function stableStringify(obj: any): string {
   return JSON.stringify(obj);
 }
 
+export interface SyncOptions {
+  http?: HttpFn; // injectable HTTP (tests); defaults to CapacitorHttp
+  retries?: number; // optimistic-concurrency retries on 409
+  // The vault version this device is now on, reported once a sync settles. It's what the
+  // device report puts on the wire and in Settings (src/lib/device.ts).
+  onVersion?: (version: number) => void;
+}
+
 // Pull → mergeBlob(remoteBlob) → push at the pulled version, retrying on 409. `mergeBlob`
 // merges the decrypted remote blob (all collections) with local state and returns the
 // blob to store. Mobile has no card store, so its mergeBlob touches `fields` and passes
@@ -114,18 +122,23 @@ export async function syncVault(
   cfg: VaultConfig,
   key: VaultKey,
   mergeBlob: (remoteBlob: VaultBlob) => VaultBlob | Promise<VaultBlob>,
-  http: HttpFn = defaultHttp,
-  retries = 5,
+  opts: SyncOptions = {},
 ): Promise<VaultBlob> {
+  const { http = defaultHttp, retries = 5, onVersion } = opts;
   for (let attempt = 0; attempt <= retries; attempt++) {
     const { version, data, format } = await pullVault(cfg, key, http);
     const remoteBlob = normalizeBlob(data);
     const nextBlob = normalizeBlob(await mergeBlob(remoteBlob));
     // Skip a no-op write only when the stored format matches our key's format — a re-key
     // with unchanged data must still be pushed.
-    if (version > 0 && format === key.format && stableStringify(nextBlob) === stableStringify(remoteBlob)) return nextBlob;
+    if (version > 0 && format === key.format && stableStringify(nextBlob) === stableStringify(remoteBlob)) {
+      onVersion?.(version);
+      return nextBlob;
+    }
     const res = await putVault(cfg, key, nextBlob, version, http);
     if (res.conflict) continue;
+    // The PUT bumps the stored version; fall back to base+1 if the response omitted it.
+    onVersion?.(typeof res.version === 'number' ? res.version : version + 1);
     return nextBlob;
   }
   throw new Error('vault sync failed after repeated version conflicts');

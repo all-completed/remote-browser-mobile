@@ -4,6 +4,7 @@
 // (never the URL). Values are sent only over this authenticated socket — never
 // logged, never exposed to any model.
 import { CapacitorHttp } from '@capacitor/core';
+import { APP_VERSION, type DeviceReport } from './device';
 
 export interface FillField {
   selector: string;
@@ -44,6 +45,8 @@ export class KeeperClient {
   private reconnectTimer: ReturnType<typeof setTimeout> | null = null;
   private stopped = true;
   private fcmToken = ''; // FCM device token; re-sent over the WS on every connect
+  private deviceReport: DeviceReport | null = null; // who we are + which vault we hold
+  private sentReport = ''; // the report this socket has already announced
   state: ConnState = 'disconnected';
   private listeners: Listeners = {};
 
@@ -90,7 +93,11 @@ export class KeeperClient {
       this.opened = true;
       this.backoff = 1000;
       this.setState('connected');
-      this.send({ type: 'hello', app: 'remote-browser-mobile', version: '0.1.0' });
+      // Announce who we are and which vault we hold on every connect, so the service's
+      // device list self-heals across a restart (the same contract as the FCM token).
+      const report = this.deviceReport;
+      this.sentReport = report ? JSON.stringify(report) : '';
+      this.send({ type: 'hello', app: 'remote-browser-mobile', version: APP_VERSION, ...(report || {}) });
       this.sendFcmToken(); // (re)register the device for wake-pushes on this fresh socket
     };
     ws.onmessage = (ev) => {
@@ -228,6 +235,22 @@ export class KeeperClient {
 
   private sendFcmToken() {
     if (this.fcmToken) this.send({ type: 'fcm_token', token: this.fcmToken });
+  }
+
+  // Publish this device's identity + vault state (src/lib/device.ts). It rides on `hello`
+  // for a fresh socket; a state that CHANGES mid-connection (first vault sync, a re-pair,
+  // a key mismatch) is re-announced as `device_info` — the companion frame the service
+  // dispatches alongside hello (remote-browser-service server/api/keeper.py:171). An
+  // unchanged state sends nothing. Inert metadata only: no password, no derived key, and
+  // no secret_id for a legacy v1 key (vaultCrypto.ts's vaultKeyReport).
+  setDeviceReport(report: DeviceReport) {
+    this.deviceReport = report;
+    const json = JSON.stringify(report);
+    if (json === this.sentReport) return;
+    if (this.ws && this.ws.readyState === WebSocket.OPEN) {
+      this.send({ type: 'device_info', ...report });
+      this.sentReport = json;
+    }
   }
 
   submit(requestId: string, values: { selector: string; value: string }[]) {

@@ -14,6 +14,7 @@ import { markAutofilled, saveScreenshot } from './lib/history';
 import { getSaved, hostFromUrl, mergeRemoteVault, saveValue } from './lib/fieldStore';
 import { loadGenerateShowWindow } from './lib/settings';
 import { syncVault, VaultKeyMismatch } from './lib/vault';
+import { buildDeviceReport, type DeviceReport } from './lib/device';
 import StatusPage from './pages/StatusPage';
 import HistoryPage from './pages/HistoryPage';
 import SettingsPage from './pages/SettingsPage';
@@ -75,6 +76,7 @@ interface AppCtx {
   config: Config;
   connState: ConnState;
   configLoaded: boolean;
+  deviceReport: DeviceReport | null; // this device's identity + vault state (Settings)
   reloadConfig: () => Promise<void>;
 }
 
@@ -82,6 +84,7 @@ const Ctx = createContext<AppCtx>({
   config: { baseUrl: '', apiKey: '', secret: '', vaultKey: null },
   connState: 'disconnected',
   configLoaded: false,
+  deviceReport: null,
   reloadConfig: async () => {},
 });
 
@@ -96,6 +99,18 @@ export default function App() {
   const baseUrlRef = useRef(''); // latest base URL for the once-registered request listener
   const cfgRef = useRef<Config>({ baseUrl: '', apiKey: '', secret: '', vaultKey: null }); // latest full config
   const syncingVault = useRef(false);
+  const [deviceReport, setDeviceReport] = useState<DeviceReport | null>(null);
+  // What only a sync can tell us about the vault: the version this device reached, and
+  // whether the stored blob was written under a different password (VaultKeyMismatch).
+  const vaultSync = useRef<{ version: number | null; needsRepair: boolean }>({ version: null, needsRepair: false });
+
+  // Rebuild "who am I / which vault do I hold" and publish it: to the service (rides on
+  // `hello`, or a `device_info` frame when it changes mid-connection) and to Settings.
+  const refreshDeviceReport = useCallback(async () => {
+    const report = await buildDeviceReport(cfgRef.current.vaultKey, vaultSync.current);
+    setDeviceReport(report);
+    keeper.setDeviceReport(report);
+  }, []);
 
   // Sync the "vault"-scoped saved fields with the service: pull the remote blob,
   // merge it into the local cache (last-write-wins), and push the union back. The
@@ -109,26 +124,44 @@ export default function App() {
     try {
       // Merge only `fields`; pass every other collection (e.g. desktop-saved `cards`)
       // through unchanged so this device never drops them.
-      await syncVault({ baseUrl, apiKey }, vaultKey, async (remoteBlob) => ({
-        ...remoteBlob,
-        fields: await mergeRemoteVault(remoteBlob.fields || {}),
-      }));
+      await syncVault(
+        { baseUrl, apiKey },
+        vaultKey,
+        async (remoteBlob) => ({ ...remoteBlob, fields: await mergeRemoteVault(remoteBlob.fields || {}) }),
+        {
+          onVersion: (version) => {
+            vaultSync.current = { version, needsRepair: false }; // decrypted fine → not broken
+          },
+        },
+      );
     } catch (e) {
       // A key mismatch means the vault password changed elsewhere — re-pair to update it.
-      if (e instanceof VaultKeyMismatch) console.warn('[keeper] vault: re-pair to update the vault password');
+      // That's "holds a vault it cannot decrypt", not "holds no vault": report it as such.
+      if (e instanceof VaultKeyMismatch) {
+        vaultSync.current = { ...vaultSync.current, needsRepair: true };
+        console.warn('[keeper] vault: re-pair to update the vault password');
+      }
       /* otherwise offline / transient — retried on the next connect or save */
     } finally {
       syncingVault.current = false;
+      void refreshDeviceReport(); // the vault state may have moved (version / needs_repair)
     }
-  }, []);
+  }, [refreshDeviceReport]);
 
   const applyConfig = useCallback(async () => {
     const cfg = await loadConfig();
     setConfig(cfg);
     setConfigLoaded(true);
     baseUrlRef.current = cfg.baseUrl;
+    // A different vault key (a re-pair) invalidates what the last sync told us — the
+    // version and any "cannot decrypt" verdict belong to the key that produced them. The
+    // device id is untouched by this: it lives outside the config (src/lib/device.ts).
+    if (JSON.stringify(cfg.vaultKey) !== JSON.stringify(cfgRef.current.vaultKey)) {
+      vaultSync.current = { version: null, needsRepair: false };
+    }
     cfgRef.current = cfg;
     keeper.configure(keeperWsUrl(cfg.baseUrl), cfg.apiKey, cfg.baseUrl);
+    await refreshDeviceReport(); // ready before the socket opens, so `hello` carries it
     keeper.disconnect();
     keeper.connect();
     // Once paired, keep a persistent tray notification (Android) so the Keeper stays
@@ -147,7 +180,7 @@ export default function App() {
     } else {
       void foregroundService.stop();
     }
-  }, []);
+  }, [refreshDeviceReport]);
 
   useEffect(() => {
     if (started.current) return;
@@ -238,7 +271,7 @@ export default function App() {
   };
 
   return (
-    <Ctx.Provider value={{ config, connState, configLoaded, reloadConfig: applyConfig }}>
+    <Ctx.Provider value={{ config, connState, configLoaded, deviceReport, reloadConfig: applyConfig }}>
       {current && (
         <PromptModal
           request={current}
