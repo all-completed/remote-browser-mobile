@@ -132,6 +132,42 @@ ion-content {
   padding-bottom: calc(10px + env(safe-area-inset-bottom));
   border-top: 1px solid var(--rb-border);
 }
+/* "Why?" panel — replaces the prompt's footer when the user declines with a reason.
+   It sits outside the scrolling body, so the presets are reachable in one tap from
+   wherever the user had scrolled to. */
+.rb-decline {
+  padding: 12px 12px 0;
+  border-top: 1px solid var(--rb-border);
+}
+.rb-decline .rb-input {
+  --background: var(--rb-panel2);
+  --color: var(--rb-text);
+}
+.rb-decline .rb-prompt-foot {
+  border-top: 0;
+  padding-left: 0;
+  padding-right: 0;
+}
+.rb-presets {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: 10px;
+}
+.rb-preset {
+  font: inherit;
+  font-size: 12.5px;
+  color: var(--rb-text);
+  background: var(--rb-panel2);
+  border: 1px solid var(--rb-border2);
+  border-radius: 999px;
+  padding: 7px 12px;
+  cursor: pointer;
+}
+.rb-preset:active {
+  border-color: var(--rb-primary);
+  color: var(--rb-primary-hi);
+}
 .rb-flabel {
   display: block;
   font-size: 12.5px;

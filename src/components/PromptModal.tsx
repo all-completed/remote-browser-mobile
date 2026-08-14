@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { IonButton, IonCheckbox, IonInput, IonSelect, IonSelectOption, IonTextarea } from '@ionic/react';
 import type { FillField, FillRequest } from '../lib/keeperClient';
 import {
+  MAX_DECLINE_REASON,
   fieldHint,
   fieldInputMode,
   fieldMaxLen,
@@ -9,6 +10,7 @@ import {
   generateSharedPasswords,
   isMultilineField,
   isSecretField,
+  normalizeDeclineReason,
   shortUrl,
   submitValue,
 } from '../lib/format';
@@ -20,10 +22,21 @@ interface Props {
   request: FillRequest;
   baseUrl: string;
   onSubmit: (values: { selector: string; value: string }[]) => void;
-  onCancel: () => void;
+  onCancel: (reason?: string) => void;
 }
 
 const isCard = (field?: string) => String(field || '').toLowerCase().startsWith('card-');
+
+// One-tap answers to "why not?", covering the declines that call for different agent
+// behaviour (issue #7): retry with another identity, retry later, stop entirely, fix
+// the target, or give up on this credential. Free text stays available for the rest.
+const DECLINE_PRESETS = [
+  'Wrong account — use the other one',
+  'Not now — ask again later',
+  "I'll do this myself — don't retry",
+  'Wrong field or wrong site',
+  "I don't have that credential",
+];
 
 // Full-screen prompt (plain overlay; not an IonModal, so it always renders).
 export default function PromptModal({ request, baseUrl, onSubmit, onCancel }: Props) {
@@ -33,6 +46,8 @@ export default function PromptModal({ request, baseUrl, onSubmit, onCancel }: Pr
   const [saveScope, setSaveScope] = useState<'' | Scope | 'forget'>('');
   const [savedExisting, setSavedExisting] = useState(false); // a stored value was prefilled
   const [dontAsk, setDontAsk] = useState(false); // fill automatically next time
+  const [declining, setDeclining] = useState(false); // the "why?" panel is open
+  const [reason, setReason] = useState(''); // free-text decline note (never a field value)
 
   const fields = request.fields || [];
   const host = hostFromUrl(request.url);
@@ -48,6 +63,8 @@ export default function PromptModal({ request, baseUrl, onSubmit, onCancel }: Pr
     setSaveScope('');
     setSavedExisting(false);
     setDontAsk(false);
+    setDeclining(false);
+    setReason('');
     // Generate fresh strong values for generate-fields; default to saving them.
     // Shared per kind, so a "Confirm password" field gets the SAME value as the
     // password it confirms (otherwise the form rejects every submission).
@@ -256,12 +273,51 @@ export default function PromptModal({ request, baseUrl, onSubmit, onCancel }: Pr
         </p>
       </div>
 
-      <div className="rb-prompt-foot">
-        <IonButton fill="clear" onClick={onCancel}>
-          Cancel
-        </IonButton>
-        <IonButton onClick={send}>Send</IonButton>
-      </div>
+      {declining ? (
+        // Declining WITH a reason: presets answer the common cases in one tap, free
+        // text covers the rest. Whatever is sent is plain text the agent may read —
+        // it is typed here and never sourced from a field value or the vault.
+        <div className="rb-decline">
+          <label className="rb-flabel">Why? — the agent sees this text (never a value)</label>
+          <div className="rb-presets">
+            {DECLINE_PRESETS.map((p) => (
+              <button type="button" key={p} className="rb-preset" onClick={() => onCancel(p)}>
+                {p}
+              </button>
+            ))}
+          </div>
+          <IonInput
+            className="rb-input"
+            fill="outline"
+            value={reason}
+            maxlength={MAX_DECLINE_REASON}
+            autocapitalize="sentences"
+            autocomplete="off"
+            spellcheck={false}
+            placeholder="…or type a short reason"
+            onIonInput={(e) => setReason((e.detail.value || '').slice(0, MAX_DECLINE_REASON))}
+          />
+          <div className="rb-prompt-foot">
+            <IonButton fill="clear" onClick={() => setDeclining(false)}>
+              Back
+            </IonButton>
+            {/* An empty (or whitespace-only) note declines exactly like plain Cancel. */}
+            <IonButton color="danger" onClick={() => onCancel(normalizeDeclineReason(reason))}>
+              Decline
+            </IonButton>
+          </div>
+        </div>
+      ) : (
+        <div className="rb-prompt-foot">
+          <IonButton fill="clear" onClick={() => onCancel()}>
+            Cancel
+          </IonButton>
+          <IonButton fill="clear" onClick={() => setDeclining(true)}>
+            Cancel with reason…
+          </IonButton>
+          <IonButton onClick={send}>Send</IonButton>
+        </div>
+      )}
 
       <ImageModal src={zoom} onClose={() => setZoom(null)} />
     </div>

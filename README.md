@@ -20,6 +20,16 @@ The model only ever learns the request *status*, never the value.
   the agent's message, and one masked input per field (with `length`/`format`
   constraints). The values are sent back over the same socket; the **service**
   types them into the page.
+- **Declining** stays one tap (**Cancel**). **Cancel with reason…** opens a panel that
+  attaches a short note — five one-tap presets ("Wrong account", "Not now", "I'll do
+  this myself", …) or free text — so the agent learns *why* instead of seeing a bare
+  `cancelled` and guessing between retrying and giving up. The note rides back on the
+  same `fill_response` frame as `reason` (max 200 chars; whitespace-only means no
+  note, i.e. an ordinary cancel). It is ordinary user-typed text — never a field or
+  vault value — so it is safe to show to the model. **Carrying it through to the agent
+  is the service's half**: until `get_fill_status` exposes a `cancelled` request's
+  `reason`, a service that ignores the field makes the decline behave exactly as
+  before (all-completed/remote-browser-mobile#7).
 - **History** lists past requests (status + field metadata only — never values)
   from `GET /api/sessions/fill-history`. A proof screenshot opens full-size from the
   local cache when this device captured one, otherwise from
