@@ -29,7 +29,23 @@ The model only ever learns the request *status*, never the value.
   vault value — so it is safe to show to the model. **Carrying it through to the agent
   is the service's half**: until `get_fill_status` exposes a `cancelled` request's
   `reason`, a service that ignores the field makes the decline behave exactly as
-  before (all-completed/remote-browser-mobile#7).
+  before (all-completed/remote-browser-mobile#7). Declining stays available **even at
+  0:00** — unlike Send, it costs nothing if the service has already stopped listening.
+- A pending request **counts down** to the moment the service stops waiting (it then
+  times out on its own), and the prompt closes itself when the time is gone instead of
+  lingering as a prompt that can no longer be answered. The countdown comes from an
+  **absolute deadline on the wire** — never from when the frame arrived, because the
+  service replays a pending `fill_request` verbatim to a Keeper that reconnects, and a
+  timer restarted on that replay would promise five fresh minutes to a phone that woke
+  with thirty seconds left. A frame carrying no deadline shows **no countdown at all**
+  rather than an invented one (`src/lib/deadline.ts`; `npm test`). The accepted fields,
+  any of which may be epoch seconds, epoch milliseconds or ISO-8601:
+
+  | field | meaning |
+  | --- | --- |
+  | `expires_at` | when the service stops waiting — the deadline itself |
+  | `created_at` + `timeout_s` | an equally absolute second form, used when `expires_at` is absent |
+  | `server_now` | the service's clock as it sent the frame; optional, and cancels out a device clock that is wrong |
 - **History** lists past requests (status + field metadata only — never values)
   from `GET /api/sessions/fill-history`. A proof screenshot opens full-size from the
   local cache when this device captured one, otherwise from
@@ -107,3 +123,10 @@ Open **Settings** in the app and set the service URL (e.g.
   (FCM/APNs) for background wake-up is a future addition (needs Google/Apple
   developer accounts).
 - iOS is not set up yet (`npx cap add ios`).
+- The **countdown needs the service half**: at the time of writing, the `fill_request`
+  frame documented in `remote-browser-service` `docs/keeper-protocol.md` carries no
+  deadline (only `type, request_id, session_id, url, message, screenshot, fields`), so
+  the request expires silently after `DEFAULT_FILL_TIMEOUT_S` with nothing on the wire
+  to count down to. The client above is ready and degrades to today's behaviour — no
+  timer, no local expiry — until the service adds `expires_at` (or `created_at` +
+  `timeout_s`).
