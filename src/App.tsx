@@ -256,8 +256,13 @@ export default function App() {
 
   const current = queue[0] || null;
 
-  const finish = (req: FillRequest, payload: { values?: { selector: string; value: string }[]; cancelled?: boolean }) => {
-    if (payload.cancelled) keeper.cancel(req.request_id);
+  // `reason` is the optional plain-text note the user attached to a decline; it goes
+  // back with the cancel so the agent knows why (see keeperClient.cancel).
+  const finish = (
+    req: FillRequest,
+    payload: { values?: { selector: string; value: string }[]; cancelled?: boolean; reason?: string },
+  ) => {
+    if (payload.cancelled) keeper.cancel(req.request_id, payload.reason);
     else keeper.submit(req.request_id, payload.values || []);
     // The prompt may have saved/forgotten a vault-scoped value → push it to other devices.
     if (!payload.cancelled) void syncVaultNow();
@@ -277,7 +282,7 @@ export default function App() {
           request={current}
           baseUrl={config.baseUrl}
           onSubmit={(values) => finish(current, { values })}
-          onCancel={() => finish(current, { cancelled: true })}
+          onCancel={(reason) => finish(current, { cancelled: true, reason })}
         />
       )}
       <IonReactRouter>

@@ -200,6 +200,25 @@ export function formatHint(format?: string): string {
   return fieldHint(undefined, format);
 }
 
+// ---- Decline reason ----------------------------------------------------------
+// The optional short note a user may attach when dismissing a prompt, so the agent
+// learns WHY instead of seeing a bare `cancelled` ("wrong account" and "I already
+// did it myself" call for opposite next moves). It is ordinary user-typed text —
+// never a field value, never a vault value — and it is the only free text this app
+// ever sends onward, so it is normalised hard: control characters and newlines
+// collapse to spaces and the length is capped. A hint for the agent, not a channel.
+export const MAX_DECLINE_REASON = 200;
+
+/**
+ * Collapse whitespace/control characters, trim, and cap at MAX_DECLINE_REASON.
+ * Whitespace-only input normalises to '' — i.e. exactly "no reason", so a stray
+ * space can never turn a plain dismiss into a decline carrying an empty note.
+ */
+export function normalizeDeclineReason(raw?: string | null): string {
+  const s = String(raw ?? '').replace(/[\s\p{Cc}]+/gu, ' ').trim();
+  return s.length > MAX_DECLINE_REASON ? s.slice(0, MAX_DECLINE_REASON).trim() : s;
+}
+
 // ---- Relative timestamps -----------------------------------------------------
 // "2w ago" answers "is this recent?" at a glance where a full timestamp has to be
 // decoded. On mobile there is no hover, so callers pair this with absTime() behind

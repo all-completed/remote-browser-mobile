@@ -5,6 +5,7 @@
 // logged, never exposed to any model.
 import { CapacitorHttp } from '@capacitor/core';
 import { APP_VERSION, type DeviceReport } from './device';
+import { normalizeDeclineReason } from './format';
 
 export interface FillField {
   selector: string;
@@ -257,8 +258,17 @@ export class KeeperClient {
     this.send({ type: 'fill_response', request_id: requestId, values });
   }
 
-  cancel(requestId: string) {
-    this.send({ type: 'fill_response', request_id: requestId, cancelled: true });
+  // A decline may carry an OPTIONAL short note explaining it ("wrong account", "I did
+  // it myself"), so the agent gets more than a bare `cancelled` to act on. It rides on
+  // the existing fill_response frame as `reason` — the same field name the desktop
+  // Keeper already sends on its ui_failed cancel (remote-browser-keeper src/main.js:593)
+  // — so no new transport is introduced: a service that does not read it yet simply
+  // ignores it and the decline behaves exactly as before. The note is ordinary text
+  // typed by the user; field values are never sourced into it, and an empty/whitespace
+  // note is omitted entirely so a plain dismiss stays byte-identical to today's frame.
+  cancel(requestId: string, reason?: string) {
+    const note = normalizeDeclineReason(reason);
+    this.send({ type: 'fill_response', request_id: requestId, cancelled: true, ...(note ? { reason: note } : {}) });
   }
 }
 
