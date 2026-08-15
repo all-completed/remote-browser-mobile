@@ -47,6 +47,34 @@ test('REPLAY: the same frame arriving later yields the SAME deadline, not a fres
   assert.equal(formatRemaining(remainingMs(replay, T0 + 270_000)), '0:30');
 });
 
+// The regression this pins: `server_now` is stamped ONCE, when the frame is built, and
+// pending_payloads() replays that frame verbatim — so on a later arrival it is stale.
+// Read as "the service's clock right now" it makes `at - server_now` a frozen interval,
+// and `now +` that interval restarts the countdown on every reconnect. The test above
+// missed it because `{ expires_at }` alone is the one replay-safe form, and the E2E missed
+// it because App.tsx's request_id dedup keeps the first copy's deadline for as long as the
+// app process survives. Neither holds on a FRESH instance — the app killed by the OS and
+// woken by a push, a reboot, or a hand-off to a second device — which is what this is.
+test('REPLAY with server_now: a stale frame does not restart the countdown', () => {
+  for (const frame of [
+    { expires_at: SEC(T0 + 300_000), server_now: SEC(T0) },
+    { created_at: SEC(T0), timeout_s: 300, server_now: SEC(T0) },
+  ]) {
+    const label = JSON.stringify(frame);
+    // First arrival, on a device whose clock is right: the full five minutes.
+    const first = deadlineFromFrame(frame, T0);
+    assert.equal(remainingMs(first, T0), 300_000, label);
+    // The SAME frame object 4:30 later, resolved by an app that has just started and has
+    // never seen this request before. 0:30 is the truth; 5:00 would be the old lie.
+    const replay = deadlineFromFrame(frame, T0 + 270_000);
+    assert.equal(replay, first, `${label}: same frame ⇒ same absolute instant`);
+    assert.equal(formatRemaining(remainingMs(replay, T0 + 270_000)), '0:30', label);
+    // And once the deadline itself has passed, the replay yields no deadline at all
+    // (⇒ no countdown, no local expiry) rather than a fresh five minutes.
+    assert.equal(deadlineFromFrame(frame, T0 + 400_000), null, label);
+  }
+});
+
 test('created_at + timeout_s is an equally absolute second form', () => {
   const frame = { created_at: SEC(T0 - 100_000), timeout_s: 300 };
   assert.equal(deadlineFromFrame(frame, T0), T0 + 200_000);
@@ -56,14 +84,25 @@ test('created_at + timeout_s is an equally absolute second form', () => {
   assert.equal(deadlineFromFrame({ ...frame, expires_at: SEC(T0 + 60_000) }, T0), T0 + 60_000);
 });
 
-test('server_now cancels a device clock that is wrong', () => {
-  // Service says: now = T0, expires at T0+300s. This device thinks it is T0+2h.
-  const skewed = T0 + 2 * 3600_000;
-  const at = deadlineFromFrame({ expires_at: SEC(T0 + 300_000), server_now: SEC(T0) }, skewed);
-  assert.equal(remainingMs(at, skewed), 300_000); // still five minutes, not "expired"
-  // Without server_now the same frame would look long dead — and is then reported as
-  // "no trustworthy deadline" rather than killing a request the service still holds.
-  assert.equal(deadlineFromFrame({ expires_at: SEC(T0 + 300_000) }, skewed), null);
+test('server_now cancels a device clock that is BEHIND, and never inflates the countdown', () => {
+  const frame = { expires_at: SEC(T0 + 300_000), server_now: SEC(T0) }; // service: 5:00 left
+  // A device two hours behind. Its own reading of `expires_at` is 2:05:00 out — over the
+  // horizon — but the corrected reading is the shorter one, so it wins and is exact.
+  const behind = T0 - 2 * 3600_000;
+  assert.equal(remainingMs(deadlineFromFrame(frame, behind), behind), 300_000);
+  // A device two hours AHEAD reads `expires_at` as long past. That cannot be corrected
+  // without trusting the (replayable, therefore stale-able) `server_now` as "now", so the
+  // answer is "no trustworthy deadline" — no countdown AND no local expiry, leaving the
+  // prompt for the service's own `request_resolved` — rather than a number we can't stand
+  // behind or a request killed locally on the strength of a bad clock.
+  const ahead = T0 + 2 * 3600_000;
+  assert.equal(deadlineFromFrame(frame, ahead), null);
+  assert.equal(deadlineFromFrame({ expires_at: SEC(T0 + 300_000) }, ahead), null); // as without it
+  // Residual, and deliberate: a clock that is badly BEHIND still leans on `server_now`,
+  // so a replay to such a device over-reads by the frame's age (300s shown, 30s true) —
+  // bounded by the clock error, and the price of showing that device anything at all.
+  // A correct clock — the case that matters — is exact at any age (see the REPLAY test).
+  assert.equal(remainingMs(deadlineFromFrame(frame, behind + 270_000), behind + 270_000), 300_000);
 });
 
 test('no deadline is invented, and neither past nor absurd ones are believed', () => {

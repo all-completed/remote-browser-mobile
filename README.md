@@ -45,7 +45,7 @@ The model only ever learns the request *status*, never the value.
   | --- | --- |
   | `expires_at` | when the service stops waiting — the deadline itself |
   | `created_at` + `timeout_s` | an equally absolute second form, used when `expires_at` is absent |
-  | `server_now` | the service's clock as it sent the frame; optional, and cancels out a device clock that is wrong |
+  | `server_now` | the service's clock as it sent the frame; optional. Stamped once, so a replayed frame carries a stale one — it is read as a second, never-more-generous reading of the deadline, so it can correct a device clock that is behind but can never restart the countdown |
 - **History** lists past requests (status + field metadata only — never values)
   from `GET /api/sessions/fill-history`. A proof screenshot opens full-size from the
   local cache when this device captured one, otherwise from
