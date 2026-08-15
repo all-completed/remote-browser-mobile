@@ -62,10 +62,31 @@ export function deadlineFromFrame(frame: DeadlineFrame | null | undefined, now: 
     if (created == null || typeof secs !== 'number' || !Number.isFinite(secs) || secs <= 0) return null;
     at = created + secs * 1000;
   }
-  // Translate onto the device clock when the service tells us its own time, so a phone
-  // whose clock is minutes off still counts down truthfully.
+  // `server_now` gives a second reading of the same deadline, on this device's clock:
+  //
+  //   absolute   `at` as it stands            — wrong only by this device's clock error
+  //   corrected  now + (at - server_now)      — wrong only by the frame's time in flight
+  //
+  // Neither is knowable alone: a device can't measure its own clock error, and a REPLAYED
+  // frame can't tell how long it has been in flight — `server_now` is stamped once, when
+  // the frame is built, so on a later arrival it is stale and reading it as "the service's
+  // clock right now" turns `at - server_now` into a frozen interval. `now +` that interval
+  // is exactly the timer-from-arrival the issue forbids: it restarts the countdown on
+  // every reconnect, and a freshly started app (killed by the OS, woken by a push, or a
+  // second device) has no earlier copy of the request to dedup against, so nothing else
+  // catches it.
+  //
+  // Time in flight is never negative, so the corrected reading can only ever be too
+  // GENEROUS. Believing whichever reading promises LESS therefore never inflates the
+  // countdown — and when the device clock is right the absolute reading is exact at any
+  // age, which is the case that matters: a frame replayed 4:30 late reads 0:30, not 5:00.
+  // A device clock that is BEHIND is still corrected exactly on a fresh frame (there the
+  // corrected reading is the smaller one). A device clock that is AHEAD cannot be
+  // corrected at all without trusting `server_now` as "now", so it under-reads and, once
+  // the skew passes the remaining time, falls off the `local <= now` guard below into
+  // null — no countdown and no local expiry, i.e. today's behaviour, rather than a lie.
   const serverNow = toEpochMs(frame.server_now);
-  const local = serverNow == null ? at : now + (at - serverNow);
+  const local = serverNow == null ? at : Math.min(at, now + (at - serverNow));
   if (local <= now || local - now > MAX_HORIZON_MS) return null;
   return local;
 }
