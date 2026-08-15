@@ -1,12 +1,18 @@
 name: release-apk
 
-# Build the Android APK and publish it to a rolling "latest" GitHub Release, so
+# Build the Android APK and publish it to a GitHub Release tagged v1.0.<run>, so
 # Obtainium (on the phone) can install and auto-update the app straight from here.
+#
+# The tag MUST be unique per build. Obtainium takes an app's version string from
+# the release TAG NAME, so the rolling "latest" tag this used to publish looked
+# like the same version forever and no update was ever offered -- the phone sat
+# on a six-week-old build while CI happily republished. The APK's versionCode
+# matters to Android at install time, not to Obtainium's update check.
 #
 # The APK is signed with the repo's committed debug.keystore (the project commits
 # it on purpose — see android/app/build.gradle — so every build shares a signature
 # and updates install in place without wiping the on-device token). versionCode is
-# bumped per run so Obtainium sees each build as newer.
+# bumped per run so Android accepts each build as an upgrade.
 #
 # No signing secrets needed (keystore is in the repo). Firebase/FCM config is
 # injected from the GOOGLE_SERVICES_JSON secret, same as build.yml.
@@ -72,12 +78,16 @@ jobs:
           cp android/app/build/outputs/apk/debug/app-debug.apk \
              out/remote-browser-keeper-${GITHUB_RUN_NUMBER}.apk
 
-      - name: Publish to rolling "latest" GitHub Release
+      - name: Publish a uniquely tagged GitHub Release
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          gh release delete latest --repo "$GITHUB_REPOSITORY" --cleanup-tag --yes 2>/dev/null || true
-          gh release create latest out/remote-browser-keeper-${GITHUB_RUN_NUMBER}.apk \
+          # Tag mirrors versionName (1.0.<run>) so what Obtainium shows as the
+          # version is what the app reports about itself. Never reuse a tag:
+          # a constant tag reads as "no new version" to Obtainium forever.
+          TAG="v1.0.${GITHUB_RUN_NUMBER}"
+          gh release create "$TAG" out/remote-browser-keeper-${GITHUB_RUN_NUMBER}.apk \
             --repo "$GITHUB_REPOSITORY" \
-            --title "Remote Browser Keeper (latest)" \
+            --title "Remote Browser Keeper 1.0.${GITHUB_RUN_NUMBER}" \
+            --latest \
             --notes "APK · build ${GITHUB_RUN_NUMBER} · commit ${GITHUB_SHA}"

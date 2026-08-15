@@ -98,17 +98,24 @@ artifact. Doc-only pushes are skipped.
 ### Install & auto-update on your phone (Obtainium)
 
 [`.github/workflows/release.yml`](.github/workflows/release.yml) additionally
-publishes the APK to a rolling **`latest`** GitHub Release on every push to `main`,
+publishes the APK to a GitHub Release tagged **`v1.0.<run>`** on every push to `main`,
 so [Obtainium](https://github.com/ImranR98/Obtainium) can install and **auto-update**
 the app in place — no Play Store, no manual reinstall.
 
 - The APK is signed with the repo's **committed `debug.keystore`** (this project
   commits it on purpose so every build shares a signature and updates don't wipe
   the on-device token), so no signing secrets are needed.
-- `versionCode` is bumped to the CI run number so Obtainium detects each new build.
+- **Every release gets a unique tag** (`v1.0.<run>`, matching `versionName`). This is
+  what makes auto-update work: Obtainium reads an app's version from the release
+  **tag name**, so a rolling/reused tag looks like the same version forever and no
+  update is ever offered. Releases are never deleted, so previous APKs stay
+  installable if a build turns out bad.
+- `versionCode` is bumped to the CI run number as well, but that is for **Android**:
+  it lets each build install over the last one and blocks downgrades. Obtainium does
+  not read it — it never opens the APK.
 
 **Set up Obtainium once:** Add app → URL `https://github.com/all-completed/remote-browser-mobile`
-(public repo, no token needed) → it tracks the `latest` release; install once, then
+(public repo, no token needed) → it tracks the newest release; install once, then
 every push to `main` offers a one-tap update.
 
 ## Configuration
