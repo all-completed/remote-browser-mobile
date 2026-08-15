@@ -6,6 +6,7 @@
 import { CapacitorHttp } from '@capacitor/core';
 import { APP_VERSION, type DeviceReport } from './device';
 import { normalizeDeclineReason } from './format';
+import { deadlineFromFrame } from './deadline';
 
 export interface FillField {
   selector: string;
@@ -24,7 +25,17 @@ export interface FillRequest {
   message?: string;
   screenshot?: string; // single proof image (data URL)
   fields: FillField[];
+  // When the service stops waiting (status `timeout`). Absolute — epoch seconds, epoch
+  // milliseconds or ISO-8601 — because this frame is REPLAYED verbatim to a reconnecting
+  // Keeper; see deadline.ts. Optional: older services send no deadline at all.
+  expires_at?: number | string;
+  created_at?: number | string; // absolute start; with timeout_s it also yields a deadline
+  timeout_s?: number | string;
+  server_now?: number | string; // the service's clock at send time (cancels device skew)
   _requested_at?: string;
+  // Local-only: `expires_at` resolved onto THIS device's clock at arrival (epoch ms).
+  // Absent = no trustworthy deadline → no countdown, no local expiry.
+  _deadline_ms?: number;
 }
 
 // 'unauthorized' = the service rejected the token (wrong/expired key).
@@ -114,7 +125,14 @@ export class KeeperClient {
         return;
       }
       if (msg.type === 'fill_request' && msg.request_id) {
-        msg._requested_at = new Date().toISOString();
+        const now = Date.now();
+        msg._requested_at = new Date(now).toISOString();
+        // Pin the deadline to an instant on arrival. A replay of this same frame after a
+        // reconnect resolves to the SAME instant, so the countdown stays honest instead
+        // of restarting; a frame carrying no usable deadline stays undefined (never
+        // timed from arrival — see deadline.ts).
+        const deadline = deadlineFromFrame(msg, now);
+        if (deadline != null) msg._deadline_ms = deadline;
         this.listeners.request?.(msg as FillRequest);
         return;
       }

@@ -95,6 +95,7 @@ export default function App() {
   const [connState, setConnState] = useState<ConnState>('disconnected');
   const [configLoaded, setConfigLoaded] = useState(false);
   const [queue, setQueue] = useState<FillRequest[]>([]);
+  const [expiredNotice, setExpiredNotice] = useState(''); // a prompt closed itself — say why
   const started = useRef(false);
   const baseUrlRef = useRef(''); // latest base URL for the once-registered request listener
   const cfgRef = useRef<Config>({ baseUrl: '', apiKey: '', secret: '', vaultKey: null }); // latest full config
@@ -254,6 +255,47 @@ export default function App() {
     };
   }, [applyConfig, syncVaultNow]);
 
+  // A request that ran out of time is dead at the service (status `timeout`), so the
+  // prompt must close itself instead of lingering as something the user can still tap and
+  // "answer" into the void. Sweeps the WHOLE queue, not just the visible prompt, so one
+  // waiting behind it can't surface already-expired. Requests whose frame carried no
+  // trustworthy deadline have no `_deadline_ms` and are never swept — the service's own
+  // `request_resolved` still dismisses those (see the 'resolved' listener above).
+  // It drops the queue entry DIRECTLY and deliberately does not go through `finish()`:
+  // expiry is the service's decision, not the user's, so nothing goes on the wire — no
+  // `fill_response`, and in particular not the decline path (issue #7), which would
+  // report a `cancelled` (with a `reason` the user never gave) for a request the service
+  // has already recorded as `timeout`.
+  useEffect(() => {
+    if (!queue.some((r) => r._deadline_ms)) return;
+    const sweep = () => {
+      const now = Date.now();
+      const dead = queue.filter((r) => r._deadline_ms && r._deadline_ms <= now);
+      if (!dead.length) return;
+      setExpiredNotice(
+        dead.length > 1
+          ? `${dead.length} requests expired — the service stopped waiting for an answer.`
+          : 'The request expired — the service stopped waiting for an answer.',
+      );
+      setQueue((q) => {
+        const gone = new Set(dead.map((r) => r.request_id));
+        const next = q.filter((r) => !gone.has(r.request_id));
+        if (next.length === 0) void foregroundService.clearAlert();
+        return next;
+      });
+    };
+    sweep(); // a deadline already passed while the device slept resolves at once
+    const id = setInterval(sweep, 1000);
+    return () => clearInterval(id);
+  }, [queue]);
+
+  // The notice is an explanation, not a state — it fades on its own.
+  useEffect(() => {
+    if (!expiredNotice) return;
+    const id = setTimeout(() => setExpiredNotice(''), 6000);
+    return () => clearTimeout(id);
+  }, [expiredNotice]);
+
   const current = queue[0] || null;
 
   // `reason` is the optional plain-text note the user attached to a decline; it goes
@@ -284,6 +326,11 @@ export default function App() {
           onSubmit={(values) => finish(current, { values })}
           onCancel={(reason) => finish(current, { cancelled: true, reason })}
         />
+      )}
+      {expiredNotice && (
+        <div className="rb-toast" role="status" onClick={() => setExpiredNotice('')}>
+          {expiredNotice}
+        </div>
       )}
       <IonReactRouter>
         <IonTabs>
