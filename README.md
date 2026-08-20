@@ -121,8 +121,76 @@ every push to `main` offers a one-tap update.
 ## Configuration
 
 Open **Settings** in the app and set the service URL (e.g.
-`https://rb.all-completed.com`) and your API key. Stored locally via
-`@capacitor/preferences`.
+`https://rb.all-completed.com`) and your API key — or scan the desktop Keeper's pairing
+QR, which carries both. The URL lives in `@capacitor/preferences`; the key, the session
+secret and the vault key live in Android Keystore-backed secure storage.
+
+### This phone's own token (issue #12)
+
+Once connected, the app asks the service for a token belonging to **this device alone**
+(`POST /api/keeper/devices/enroll`, service repo issue #33) and uses it from then on. The
+point is revocability: before per-device tokens, cutting this phone off meant rotating the
+account key, which cut off the desktop Keeper and every script with it.
+
+It is additive, and on this app that matters more than usual — updates arrive by manual
+sideload, so an installed version may lag for months:
+
+- The account key keeps working forever, and stays the fallback. A service that predates
+  the feature answers 404/503; that is capability negotiation, not an error, and the app
+  says so once and carries on.
+- An existing install needs no re-pairing and no user action: it enrolls itself on the
+  next connect, or doesn't, and works either way.
+- The token goes to secure storage (never `Preferences`) and is presented in the WS
+  subprotocol, never a query param — the service refuses device tokens on the URL by
+  design, so they can't leak through access logs.
+- Revoked from the Devices page, the service hangs up (close 1008) or refuses the
+  handshake (401). The app drops the token, reconnects on the account key, and re-enrolls
+  once. It never parks on "Auth failed" for a revoke it can recover from by itself.
+- A token that comes back **without** the account's encryption secret is not adopted. That
+  shape only arises from an Auth0-login enrollment, which this app never does; adopting one
+  anyway would quietly demote a phone that is currently a full key authority for new
+  encrypted sessions, and the account key it already holds is strictly better.
+- Changing the account key in Settings (or scanning a QR for a *different* account) drops
+  the token first: it was minted under the old key. Re-entering the same key keeps it, so
+  ordinary re-pairing doesn't orphan a record server-side.
+
+Two things this deliberately does **not** change, both flagged in the issue:
+
+- **The pairing QR still carries the account key.** The service's design has no
+  enrollment-code concept — enrollment is authenticated by whatever credential you already
+  hold — so a QR that carried a device token instead would be unreadable to any older APK,
+  which is exactly the compatibility break the issue rules out. Scan-then-enroll gets the
+  phone to its own token by a route that every app version survives.
+- **FCM registration stays account-wide.** The `fcm_token` frame is unchanged, so wake
+  pushes still fan out to every keeper on the account; making pushes per-device is a
+  service-side change (the registry keys tokens by user, not device) and belongs with
+  that work.
+
+### What a revoke does and does not do
+
+Worth stating plainly, because it is the one place the additive constraint and the point
+of per-device tokens genuinely pull against each other:
+
+**Revoking this phone's device record does not cut the phone off.** It still holds the
+shared account key — the credential it was paired with and the one the compatibility
+constraint above forbids us from deleting — so it reconnects on that key and, once,
+enrolls again, which makes a *new* record appear in the Devices list. Revocation is real
+for the *token*; it is not a remote kill switch for a phone that also knows the account
+key. Cutting such a phone off still means rotating the account key, exactly as before.
+
+That is not an oversight in the client: a phone cannot both "keep working with no user
+action after a service rollout" (this issue's hard constraint) and "be revocable while
+holding the account key". The way to make revoke authoritative is to stop the phone
+holding the account key at all — delete it locally once enrolled — and that is only safe
+to ship after the service's device registry is proven durable, since a phone that has
+dropped its key and then loses its record is bricked until someone re-pairs it by hand.
+Deliberately left for a follow-up rather than half-done here.
+
+Bounded, but worth knowing: the service caps a fleet at 8 device records and evicts the
+least-recently-seen one at the cap (`device_tokens.py` `MAX_DEVICE_RECORDS`,
+`upsert_device`), so repeated revoke-and-re-enroll churn can age out an offline device's
+record. The client re-enrolls at most once per refusal and gives up after the second, so
+it cannot churn in a loop.
 
 ## Status / out of scope (v1)
 

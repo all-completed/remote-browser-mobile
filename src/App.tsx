@@ -8,13 +8,14 @@ import { App as CapApp } from '@capacitor/app';
 import { keeper, type ConnState, type FillRequest } from './lib/keeperClient';
 import { foregroundService } from './lib/foregroundService';
 import { initPush } from './lib/push';
-import { keeperWsUrl, loadConfig, loadVaultKey, type Config } from './lib/config';
+import { clearDeviceToken, keeperWsUrl, loadConfig, loadDeviceToken, loadVaultKey, saveDeviceToken, type Config } from './lib/config';
 import { generateSharedPasswords } from './lib/format';
 import { markAutofilled, saveScreenshot } from './lib/history';
 import { getSaved, hostFromUrl, mergeRemoteVault, saveValue } from './lib/fieldStore';
 import { loadGenerateShowWindow } from './lib/settings';
 import { syncVault, VaultKeyMismatch } from './lib/vault';
-import { buildDeviceReport, type DeviceReport } from './lib/device';
+import { adoptDeviceId, buildDeviceReport, deviceIdentity, type DeviceReport } from './lib/device';
+import { enrollDevice, enrollmentState, pickCredential, shouldEnroll } from './lib/enroll';
 import StatusPage from './pages/StatusPage';
 import HistoryPage from './pages/HistoryPage';
 import SettingsPage from './pages/SettingsPage';
@@ -81,7 +82,7 @@ interface AppCtx {
 }
 
 const Ctx = createContext<AppCtx>({
-  config: { baseUrl: '', apiKey: '', secret: '', vaultKey: null },
+  config: { baseUrl: '', apiKey: '', deviceToken: '', credential: '', secret: '', vaultKey: null },
   connState: 'disconnected',
   configLoaded: false,
   deviceReport: null,
@@ -91,14 +92,17 @@ const Ctx = createContext<AppCtx>({
 export const useApp = () => useContext(Ctx);
 
 export default function App() {
-  const [config, setConfig] = useState<Config>({ baseUrl: '', apiKey: '', secret: '', vaultKey: null });
+  const [config, setConfig] = useState<Config>({ baseUrl: '', apiKey: '', deviceToken: '', credential: '', secret: '', vaultKey: null });
   const [connState, setConnState] = useState<ConnState>('disconnected');
   const [configLoaded, setConfigLoaded] = useState(false);
   const [queue, setQueue] = useState<FillRequest[]>([]);
   const [expiredNotice, setExpiredNotice] = useState(''); // a prompt closed itself — say why
   const started = useRef(false);
   const baseUrlRef = useRef(''); // latest base URL for the once-registered request listener
-  const cfgRef = useRef<Config>({ baseUrl: '', apiKey: '', secret: '', vaultKey: null }); // latest full config
+  const cfgRef = useRef<Config>({ baseUrl: '', apiKey: '', deviceToken: '', credential: '', secret: '', vaultKey: null }); // latest full config
+  const enrollState = useRef(enrollmentState()); // where device enrollment stands this run
+  const rejectedTokens = useRef(0);              // device tokens the service refused this run
+  const applyConfigRef = useRef<(() => Promise<void>) | null>(null);
   const syncingVault = useRef(false);
   const [deviceReport, setDeviceReport] = useState<DeviceReport | null>(null);
   // What only a sync can tell us about the vault: the version this device reached, and
@@ -119,14 +123,14 @@ export default function App() {
   // without an API key or a held vault key (provisioned by the desktop pair QR).
   const syncVaultNow = useCallback(async () => {
     if (syncingVault.current) return;
-    const { baseUrl, apiKey, vaultKey } = cfgRef.current;
-    if (!baseUrl || !apiKey || !vaultKey) return;
+    const { baseUrl, credential, vaultKey } = cfgRef.current;
+    if (!baseUrl || !credential || !vaultKey) return;
     syncingVault.current = true;
     try {
       // Merge only `fields`; pass every other collection (e.g. desktop-saved `cards`)
       // through unchanged so this device never drops them.
       await syncVault(
-        { baseUrl, apiKey },
+        { baseUrl, apiKey: credential },
         vaultKey,
         async (remoteBlob) => ({ ...remoteBlob, fields: await mergeRemoteVault(remoteBlob.fields || {}) }),
         {
@@ -149,6 +153,71 @@ export default function App() {
     }
   }, [refreshDeviceReport]);
 
+  // -- device enrollment (issue #12) ------------------------------------------------
+  // Ask the service, once the socket is up, for a token belonging to this phone alone.
+  // Best-effort by design: a service that predates #33 answers 404, one without a
+  // metadata store answers 503, and either way we say so once and stay on the account
+  // key — which is not a degraded mode, it is how this app has always run. Nothing here
+  // can leave the phone worse off than not calling it, which matters more here than on
+  // the desktop: this build reaches users by sideload and may sit unchanged for months.
+  const maybeEnroll = useCallback(async () => {
+    const cfg = cfgRef.current;
+    if (!shouldEnroll(enrollState.current, {
+      hasDeviceToken: !!cfg.deviceToken,
+      hasApiKey: !!cfg.apiKey,
+    })) return;
+    enrollState.current.lastAttempt = Date.now();
+    enrollState.current.attempts += 1;
+    const res = await enrollDevice({
+      baseUrl: cfg.baseUrl,
+      apiKey: cfg.apiKey,
+      identity: await deviceIdentity(),
+    });
+    if (!res.ok) {
+      enrollState.current.lastError = res.reason || 'error';
+      if (res.reason === 'unsupported') enrollState.current.supported = false;
+      console.log('[keeper] not enrolling (' + res.reason + ') — staying on the account key');
+      return;
+    }
+    enrollState.current.supported = true;
+    // A token minted without the account's encryption secret would fill fields fine but
+    // could not be the key authority for NEW encrypted sessions (device_tokens.py
+    // `mint_device_token`). Enrolling with the account key always inherits one, so this
+    // is a guard against a shape we don't expect rather than a case we handle: adopting
+    // such a token would quietly downgrade a phone that is currently a full authority,
+    // and the account key it already holds is strictly better. Stay on it.
+    if (!res.secretBound) {
+      enrollState.current.lastError = 'no-secret';
+      enrollState.current.supported = false; // don't re-mint an orphan record every 6h
+      console.warn('[keeper] enrolled token carries no secret authority — staying on the account key');
+      return;
+    }
+    if (!(await saveDeviceToken(res.token || ''))) {
+      // Secure storage refused it. Presenting a token we cannot persist would enroll the
+      // device afresh on every launch, so leave it on the account key instead.
+      console.warn('[keeper] could not store the device token; staying on the account key');
+      return;
+    }
+    // The service is the authority on this device's id from here on; match it so `hello`
+    // names the record the user revokes on the Devices page.
+    if (res.deviceId) await adoptDeviceId(res.deviceId);
+    console.log('[keeper] enrolled as device', res.deviceId || '(unnamed)');
+    await applyConfigRef.current?.(); // reconnect, now authenticated by our own token
+  }, []);
+
+  // The service refused, or hung up on, a socket authenticated by our device token —
+  // a revoke, or a record this deployment can't see. Drop it and come back on the
+  // account key; re-enroll once, so revoking to re-pair heals itself, but not forever:
+  // a service that mints tokens it then rejects must not have us spinning.
+  const handleRevoked = useCallback(async () => {
+    await clearDeviceToken();
+    rejectedTokens.current += 1;
+    if (rejectedTokens.current < 2) enrollState.current.lastAttempt = 0;
+    else enrollState.current.supported = false;
+    console.warn('[keeper] device token rejected — falling back to the account key');
+    await applyConfigRef.current?.();
+  }, []);
+
   const applyConfig = useCallback(async () => {
     const cfg = await loadConfig();
     setConfig(cfg);
@@ -161,7 +230,8 @@ export default function App() {
       vaultSync.current = { version: null, needsRepair: false };
     }
     cfgRef.current = cfg;
-    keeper.configure(keeperWsUrl(cfg.baseUrl), cfg.apiKey, cfg.baseUrl);
+    const cred = pickCredential({ deviceToken: cfg.deviceToken, apiKey: cfg.apiKey });
+    keeper.configure(keeperWsUrl(cfg.baseUrl), cred.token, cfg.baseUrl, cred.kind);
     await refreshDeviceReport(); // ready before the socket opens, so `hello` carries it
     keeper.disconnect();
     keeper.connect();
@@ -183,14 +253,24 @@ export default function App() {
     }
   }, [refreshDeviceReport]);
 
+  // applyConfig re-reads the config and reconnects; enrollment and revocation both need
+  // it, and both are defined above it, so they reach it through a ref rather than by
+  // reordering the hooks around them.
+  applyConfigRef.current = applyConfig;
+
   useEffect(() => {
     if (started.current) return;
     started.current = true;
 
+    keeper.on('revoked', () => { void handleRevoked(); });
     keeper.on('state', (s) => {
       setConnState(s);
       // On (re)connect, pull vault entries saved on another paired device (and push ours).
       if (s === 'connected') void syncVaultNow();
+      // ...and see whether this service will give this phone a credential of its own.
+      // After connecting, never before: a phone that can answer requests must not be
+      // held up by an endpoint that may not exist.
+      if (s === 'connected') void maybeEnroll();
       // Surface the live socket state in the ongoing notification, so the user can
       // see whether the keeper is actually connected (not just "running").
       const text =

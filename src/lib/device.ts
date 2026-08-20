@@ -75,6 +75,25 @@ export function getDeviceId(): Promise<string> {
   return idPromise;
 }
 
+// Adopt the id the service assigned at enrollment (issue #12).
+//
+// Before enrolling, the id is ours and self-declared; after, the service ignores what we
+// claim and uses the one bound to the token. Writing it back keeps the two in step, so
+// this phone's `hello` names the same record the user sees — and revokes — on the Devices
+// page. The in-module cache is updated too, or `hello` would keep announcing the old id
+// until the next app start.
+export async function adoptDeviceId(id: string): Promise<boolean> {
+  const next = (id || '').trim();
+  if (!next || next === (await getDeviceId())) return false;
+  try {
+    await Preferences.set({ key: DEVICE_ID_KEY, value: next });
+  } catch {
+    return false; // not persisted — we still connect, just under the old label
+  }
+  idPromise = Promise.resolve(next);
+  return true;
+}
+
 // A name a human recognises in a device list. @capacitor/device isn't a dependency (adding
 // a native plugin for one string would need a native rebuild), so this reads the model out
 // of the webview's UA, which on Android carries it:

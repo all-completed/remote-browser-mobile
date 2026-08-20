@@ -5,6 +5,7 @@
 // logged, never exposed to any model.
 import { CapacitorHttp } from '@capacitor/core';
 import { APP_VERSION, type DeviceReport } from './device';
+import { isRevocationSignal, type CredentialKind } from './enroll';
 import { normalizeDeclineReason } from './format';
 import { deadlineFromFrame } from './deadline';
 
@@ -45,6 +46,9 @@ interface Listeners {
   state?: (s: ConnState) => void;
   request?: (r: FillRequest) => void;
   resolved?: (requestId: string) => void; // request resolved elsewhere → dismiss prompt
+  // This device's own token was refused (revoked server-side, or a record the service
+  // can't see). The app drops it and reconnects on the account key — see issue #12.
+  revoked?: () => void;
 }
 
 export class KeeperClient {
@@ -59,13 +63,18 @@ export class KeeperClient {
   private fcmToken = ''; // FCM device token; re-sent over the WS on every connect
   private deviceReport: DeviceReport | null = null; // who we are + which vault we hold
   private sentReport = ''; // the report this socket has already announced
+  private credentialKind: CredentialKind = 'account'; // what the socket is presenting
   state: ConnState = 'disconnected';
   private listeners: Listeners = {};
 
-  configure(wsUrl: string, apiKey: string, baseUrl = '') {
+  // `apiKey` is whatever we present: this device's token when it has one, else the
+  // shared account key. `kind` says which, and it is not cosmetic — it decides whether a
+  // 401 means "this device was revoked" or "the account key is wrong" (enroll.ts).
+  configure(wsUrl: string, apiKey: string, baseUrl = '', kind: CredentialKind = 'account') {
     this.wsUrl = wsUrl;
     this.apiKey = apiKey;
     this.baseUrl = baseUrl;
+    this.credentialKind = kind;
   }
 
   on<K extends keyof Listeners>(key: K, fn: Listeners[K]) {
@@ -141,10 +150,17 @@ export class KeeperClient {
         this.listeners.resolved?.(String(msg.request_id));
       }
     };
-    ws.onclose = () => {
+    ws.onclose = (ev) => {
       if (this.ws !== ws) return; // a superseded socket closing — don't touch state
       this.ws = null;
       if (this.opened) {
+        // Revoking a device hangs up its live sockets with 1008, so this is the usual
+        // path when the user revokes while the phone is connected.
+        if (isRevocationSignal({ kind: this.credentialKind, code: ev?.code, reason: ev?.reason })) {
+          this.setState('reconnecting');
+          this.listeners.revoked?.();
+          return;
+        }
         // Was connected and dropped — ordinary reconnect.
         this.setState('reconnecting');
         this.scheduleReconnect();
@@ -181,6 +197,15 @@ export class KeeperClient {
       status = 0; // network/DNS error — not an auth verdict
     }
     if (this.stopped || this.ws) return; // superseded by a newer attempt
+    if (isRevocationSignal({ kind: this.credentialKind, httpStatus: status })) {
+      // A refused DEVICE token is recoverable without the user: drop it and come back
+      // on the account key (the app re-enrolls if the service still offers it). Going
+      // to 'unauthorized' here instead would strand a working phone behind an
+      // "open Settings" message it cannot act on — the loop issue #12 rules out.
+      this.setState('reconnecting');
+      this.listeners.revoked?.();
+      return;
+    }
     if (status === 401 || status === 403) {
       this.setState('unauthorized'); // don't hammer the server with a known-bad token
       return;

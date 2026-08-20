@@ -79,7 +79,7 @@ export default function HistoryPage() {
     setError('');
     try {
       setAutoIds(await getAutofilledIds());
-      const list = await fetchHistory(config.baseUrl, config.apiKey);
+      const list = await fetchHistory(config.baseUrl, config.credential);
       setItems(list);
       // Off the critical path, but ordered: prune first, then record what survived.
       void (async () => {
@@ -96,7 +96,7 @@ export default function HistoryPage() {
   useEffect(() => {
     void load();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [config.apiKey, config.baseUrl]);
+  }, [config.apiKey, config.credential, config.baseUrl]);
 
   // Local cache first (instant, works offline), then the service's proof endpoint —
   // which is the only way to see a fill performed on another device.
@@ -108,7 +108,7 @@ export default function HistoryPage() {
     }
     setShotBusy(id);
     try {
-      const r = await fetchScreenshot(config.baseUrl, config.apiKey, id);
+      const r = await fetchScreenshot(config.baseUrl, config.credential, id);
       if (r.ok) {
         setZoom(r.dataUrl);
         void saveScreenshot(id, r.dataUrl); // cache it — next view is instant and offline
