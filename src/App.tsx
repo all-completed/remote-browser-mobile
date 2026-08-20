@@ -180,6 +180,18 @@ export default function App() {
       return;
     }
     enrollState.current.supported = true;
+    // A token minted without the account's encryption secret would fill fields fine but
+    // could not be the key authority for NEW encrypted sessions (device_tokens.py
+    // `mint_device_token`). Enrolling with the account key always inherits one, so this
+    // is a guard against a shape we don't expect rather than a case we handle: adopting
+    // such a token would quietly downgrade a phone that is currently a full authority,
+    // and the account key it already holds is strictly better. Stay on it.
+    if (!res.secretBound) {
+      enrollState.current.lastError = 'no-secret';
+      enrollState.current.supported = false; // don't re-mint an orphan record every 6h
+      console.warn('[keeper] enrolled token carries no secret authority — staying on the account key');
+      return;
+    }
     if (!(await saveDeviceToken(res.token || ''))) {
       // Secure storage refused it. Presenting a token we cannot persist would enroll the
       // device afresh on every launch, so leave it on the account key instead.

@@ -124,6 +124,38 @@ test('an old service, a broken one, and a hung one all leave us on the account k
   assert.equal(empty.ok, false);
 });
 
+// The one contract that spans two repos, and the one that already broke once (reading
+// `id` where the service writes `device_id`). This body is the verbatim shape of
+// remote-browser-service `POST /api/keeper/devices/enroll` at 7f4e984 — the deployed
+// build — including the `public_device_record` fields we don't read and the `message`
+// and `status` keys. If the service ever changes it, this fails here rather than on a
+// phone that silently stops adopting its own id.
+test('the deployed service response shape parses, extra keys and all', async () => {
+  const res = await e.enrollDevice({
+    baseUrl: 'https://rb.all-completed.com', apiKey: 'SHARED-KEY',
+    post: async () => ({
+      status: 200,
+      data: {
+        status: 'success',
+        device: {
+          device_id: 'dev-abc123', device_name: 'Pixel 7', platform: 'Android',
+          app_version: '0.1.0', created_at: '2026-08-20T00:00:00Z',
+          last_seen_at: '2026-08-20T00:00:00Z', enrolled: true,
+        },
+        token: 'eyJhbGciOiJIUzI1NiJ9.device.token',
+        secret_bound: true,
+        message: "Copy the token now — only its hash is stored and it won't be shown again.",
+      },
+    }),
+  });
+  assert.deepEqual(res, {
+    ok: true,
+    token: 'eyJhbGciOiJIUzI1NiJ9.device.token',
+    deviceId: 'dev-abc123',
+    secretBound: true,
+  });
+});
+
 test('no account key means no enrollment attempt at all', async () => {
   let called = false;
   const res = await e.enrollDevice({
