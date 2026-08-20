@@ -157,8 +157,11 @@ export async function enrollDevice(opts: {
       ok: true,
       token,
       // The service assigns the id; adopting it keeps our reports pointing at the record
-      // the user sees — and revokes — on the Devices page.
-      deviceId: typeof device.id === 'string' ? device.id : '',
+      // the user sees — and revokes — on the Devices page. The enroll response spells it
+      // `device_id` (public_device_record), the same key the devices list uses; `id` is
+      // accepted too so a future/older service shape doesn't silently yield ''.
+      deviceId: typeof device.device_id === 'string' ? device.device_id
+        : typeof device.id === 'string' ? device.id : '',
       // False when enrolled from a browser login rather than a key: the device fills
       // fields fine but cannot be the key authority for NEW encrypted sessions. We only
       // ever enroll with the account key, so this should be true.

@@ -71,7 +71,9 @@ test('enrollDevice sends the key in a header, never the URL', async () => {
   let seen = null;
   const post = async (o) => {
     seen = o;
-    return { status: 200, data: { token: 'dev-token', device: { id: 'd1' }, secret_bound: true } };
+    // `device_id` is what the service actually returns (public_device_record) — reading
+    // `id` here is what shipped first, and it silently left every device unadopted.
+    return { status: 200, data: { token: 'dev-token', device: { device_id: 'd1' }, secret_bound: true } };
   };
   const res = await e.enrollDevice({
     baseUrl: 'https://rb.example.com/',
@@ -95,7 +97,7 @@ test('a JSON body that arrived as a string is still parsed', async () => {
   // for no reason.
   const res = await e.enrollDevice({
     baseUrl: 'https://x', apiKey: 'k',
-    post: async () => ({ status: 200, data: '{"token":"t2","device":{"id":"d2"},"secret_bound":false}' }),
+    post: async () => ({ status: 200, data: '{"token":"t2","device":{"device_id":"d2"},"secret_bound":false}' }),
   });
   assert.equal(res.ok, true);
   assert.equal(res.token, 't2');
