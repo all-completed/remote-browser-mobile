@@ -20,6 +20,32 @@ The model only ever learns the request *status*, never the value.
   the agent's message, and one masked input per field (with `length`/`format`
   constraints). The values are sent back over the same socket; the **service**
   types them into the page.
+- **Declining** stays one tap (**Cancel**). **Cancel with reason…** opens a panel that
+  attaches a short note — five one-tap presets ("Wrong account", "Not now", "I'll do
+  this myself", …) or free text — so the agent learns *why* instead of seeing a bare
+  `cancelled` and guessing between retrying and giving up. The note rides back on the
+  same `fill_response` frame as `reason` (max 200 chars; whitespace-only means no
+  note, i.e. an ordinary cancel). It is ordinary user-typed text — never a field or
+  vault value — so it is safe to show to the model. **Carrying it through to the agent
+  is the service's half**: until `get_fill_status` exposes a `cancelled` request's
+  `reason`, a service that ignores the field makes the decline behave exactly as
+  before (all-completed/remote-browser-mobile#7). Declining stays available **even at
+  0:00** — unlike Send, it costs nothing if the service has already stopped listening.
+- A pending request **counts down** to the moment the service stops waiting (it then
+  times out on its own), and the prompt closes itself when the time is gone instead of
+  lingering as a prompt that can no longer be answered. The countdown comes from an
+  **absolute deadline on the wire** — never from when the frame arrived, because the
+  service replays a pending `fill_request` verbatim to a Keeper that reconnects, and a
+  timer restarted on that replay would promise five fresh minutes to a phone that woke
+  with thirty seconds left. A frame carrying no deadline shows **no countdown at all**
+  rather than an invented one (`src/lib/deadline.ts`; `npm test`). The accepted fields,
+  any of which may be epoch seconds, epoch milliseconds or ISO-8601:
+
+  | field | meaning |
+  | --- | --- |
+  | `expires_at` | when the service stops waiting — the deadline itself |
+  | `created_at` + `timeout_s` | an equally absolute second form, used when `expires_at` is absent |
+  | `server_now` | the service's clock as it sent the frame; optional. Stamped once, so a replayed frame carries a stale one — it is read as a second, never-more-generous reading of the deadline, so it can correct a device clock that is behind but can never restart the countdown |
 - **History** lists past requests (status + field metadata only — never values)
   from `GET /api/sessions/fill-history`. A proof screenshot opens full-size from the
   local cache when this device captured one, otherwise from
@@ -72,17 +98,24 @@ artifact. Doc-only pushes are skipped.
 ### Install & auto-update on your phone (Obtainium)
 
 [`.github/workflows/release.yml`](.github/workflows/release.yml) additionally
-publishes the APK to a rolling **`latest`** GitHub Release on every push to `main`,
+publishes the APK to a GitHub Release tagged **`v1.0.<run>`** on every push to `main`,
 so [Obtainium](https://github.com/ImranR98/Obtainium) can install and **auto-update**
 the app in place — no Play Store, no manual reinstall.
 
 - The APK is signed with the repo's **committed `debug.keystore`** (this project
   commits it on purpose so every build shares a signature and updates don't wipe
   the on-device token), so no signing secrets are needed.
-- `versionCode` is bumped to the CI run number so Obtainium detects each new build.
+- **Every release gets a unique tag** (`v1.0.<run>`, matching `versionName`). This is
+  what makes auto-update work: Obtainium reads an app's version from the release
+  **tag name**, so a rolling/reused tag looks like the same version forever and no
+  update is ever offered. Releases are never deleted, so previous APKs stay
+  installable if a build turns out bad.
+- `versionCode` is bumped to the CI run number as well, but that is for **Android**:
+  it lets each build install over the last one and blocks downgrades. Obtainium does
+  not read it — it never opens the APK.
 
 **Set up Obtainium once:** Add app → URL `https://github.com/all-completed/remote-browser-mobile`
-(public repo, no token needed) → it tracks the `latest` release; install once, then
+(public repo, no token needed) → it tracks the newest release; install once, then
 every push to `main` offers a one-tap update.
 
 ## Configuration
@@ -135,3 +168,10 @@ Two things this deliberately does **not** change, both flagged in the issue:
   (FCM/APNs) for background wake-up is a future addition (needs Google/Apple
   developer accounts).
 - iOS is not set up yet (`npx cap add ios`).
+- The **countdown needs the service half**: at the time of writing, the `fill_request`
+  frame documented in `remote-browser-service` `docs/keeper-protocol.md` carries no
+  deadline (only `type, request_id, session_id, url, message, screenshot, fields`), so
+  the request expires silently after `DEFAULT_FILL_TIMEOUT_S` with nothing on the wire
+  to count down to. The client above is ready and degrades to today's behaviour — no
+  timer, no local expiry — until the service adds `expires_at` (or `created_at` +
+  `timeout_s`).

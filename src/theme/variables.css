@@ -112,6 +112,10 @@ ion-content {
     #070A12;
 }
 .rb-prompt-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
   padding: 16px 16px 12px;
   font-size: 16px;
   font-weight: 600;
@@ -119,6 +123,17 @@ ion-content {
   border-bottom: 1px solid var(--rb-border);
   padding-top: calc(16px + env(safe-area-inset-top));
 }
+/* Time left before the service stops waiting. Tabular digits so the countdown
+   doesn't shuffle the header a pixel per second. */
+.rb-timer {
+  flex: none;
+  font-size: 13px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  color: var(--rb-muted);
+  white-space: nowrap;
+}
+.rb-timer.urgent { color: var(--rb-no); }
 .rb-prompt-body {
   flex: 1;
   overflow-y: auto;
@@ -131,6 +146,42 @@ ion-content {
   padding: 10px 12px;
   padding-bottom: calc(10px + env(safe-area-inset-bottom));
   border-top: 1px solid var(--rb-border);
+}
+/* "Why?" panel — replaces the prompt's footer when the user declines with a reason.
+   It sits outside the scrolling body, so the presets are reachable in one tap from
+   wherever the user had scrolled to. */
+.rb-decline {
+  padding: 12px 12px 0;
+  border-top: 1px solid var(--rb-border);
+}
+.rb-decline .rb-input {
+  --background: var(--rb-panel2);
+  --color: var(--rb-text);
+}
+.rb-decline .rb-prompt-foot {
+  border-top: 0;
+  padding-left: 0;
+  padding-right: 0;
+}
+.rb-presets {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: 10px;
+}
+.rb-preset {
+  font: inherit;
+  font-size: 12.5px;
+  color: var(--rb-text);
+  background: var(--rb-panel2);
+  border: 1px solid var(--rb-border2);
+  border-radius: 999px;
+  padding: 7px 12px;
+  cursor: pointer;
+}
+.rb-preset:active {
+  border-color: var(--rb-primary);
+  color: var(--rb-primary-hi);
 }
 .rb-flabel {
   display: block;
@@ -152,6 +203,25 @@ ion-content {
   font-size: 11px;
   color: var(--rb-muted2);
   margin-top: 6px;
+}
+
+/* Says why a prompt just closed itself (its deadline passed). Sits above the tab bar
+   and above the prompt overlay, so it's readable whichever was on screen. */
+.rb-toast {
+  position: fixed;
+  left: 12px;
+  right: 12px;
+  bottom: calc(70px + env(safe-area-inset-bottom));
+  z-index: 20001;
+  padding: 11px 14px;
+  font-size: 13px;
+  line-height: 1.4;
+  color: var(--rb-text);
+  background: var(--rb-panel2);
+  border: 1px solid var(--rb-border2);
+  border-left: 3px solid var(--rb-no);
+  border-radius: 10px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.45);
 }
 
 /* App-wide: tighter panels — halve the default Material ion-card margin

@@ -6,6 +6,8 @@
 import { CapacitorHttp } from '@capacitor/core';
 import { APP_VERSION, type DeviceReport } from './device';
 import { isRevocationSignal, type CredentialKind } from './enroll';
+import { normalizeDeclineReason } from './format';
+import { deadlineFromFrame } from './deadline';
 
 export interface FillField {
   selector: string;
@@ -24,7 +26,17 @@ export interface FillRequest {
   message?: string;
   screenshot?: string; // single proof image (data URL)
   fields: FillField[];
+  // When the service stops waiting (status `timeout`). Absolute — epoch seconds, epoch
+  // milliseconds or ISO-8601 — because this frame is REPLAYED verbatim to a reconnecting
+  // Keeper; see deadline.ts. Optional: older services send no deadline at all.
+  expires_at?: number | string;
+  created_at?: number | string; // absolute start; with timeout_s it also yields a deadline
+  timeout_s?: number | string;
+  server_now?: number | string; // the service's clock at send time (cancels device skew)
   _requested_at?: string;
+  // Local-only: `expires_at` resolved onto THIS device's clock at arrival (epoch ms).
+  // Absent = no trustworthy deadline → no countdown, no local expiry.
+  _deadline_ms?: number;
 }
 
 // 'unauthorized' = the service rejected the token (wrong/expired key).
@@ -122,7 +134,14 @@ export class KeeperClient {
         return;
       }
       if (msg.type === 'fill_request' && msg.request_id) {
-        msg._requested_at = new Date().toISOString();
+        const now = Date.now();
+        msg._requested_at = new Date(now).toISOString();
+        // Pin the deadline to an instant on arrival. A replay of this same frame after a
+        // reconnect resolves to the SAME instant, so the countdown stays honest instead
+        // of restarting; a frame carrying no usable deadline stays undefined (never
+        // timed from arrival — see deadline.ts).
+        const deadline = deadlineFromFrame(msg, now);
+        if (deadline != null) msg._deadline_ms = deadline;
         this.listeners.request?.(msg as FillRequest);
         return;
       }
@@ -282,8 +301,17 @@ export class KeeperClient {
     this.send({ type: 'fill_response', request_id: requestId, values });
   }
 
-  cancel(requestId: string) {
-    this.send({ type: 'fill_response', request_id: requestId, cancelled: true });
+  // A decline may carry an OPTIONAL short note explaining it ("wrong account", "I did
+  // it myself"), so the agent gets more than a bare `cancelled` to act on. It rides on
+  // the existing fill_response frame as `reason` — the same field name the desktop
+  // Keeper already sends on its ui_failed cancel (remote-browser-keeper src/main.js:593)
+  // — so no new transport is introduced: a service that does not read it yet simply
+  // ignores it and the decline behaves exactly as before. The note is ordinary text
+  // typed by the user; field values are never sourced into it, and an empty/whitespace
+  // note is omitted entirely so a plain dismiss stays byte-identical to today's frame.
+  cancel(requestId: string, reason?: string) {
+    const note = normalizeDeclineReason(reason);
+    this.send({ type: 'fill_response', request_id: requestId, cancelled: true, ...(note ? { reason: note } : {}) });
   }
 }
 
