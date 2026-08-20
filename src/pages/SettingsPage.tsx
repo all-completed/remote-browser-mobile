@@ -17,7 +17,7 @@ import {
 import { qrCodeOutline, scanOutline } from 'ionicons/icons';
 import { IonIcon } from '@ionic/react';
 import { useApp } from '../App';
-import { loadConfig, loadSecret, loadVaultKey, saveConfig } from '../lib/config';
+import { clearDeviceToken, loadConfig, loadSecret, loadVaultKey, saveConfig } from '../lib/config';
 import { loadGenerateShowWindow, setGenerateShowWindow } from '../lib/settings';
 import { makeQrDataUrl, parsePayload } from '../lib/pair';
 import { canScan, scanQr } from '../lib/scan';
@@ -33,7 +33,7 @@ const VAULT_STATE_TEXT: Record<string, { text: string; bad?: boolean }> = {
 };
 
 export default function SettingsPage() {
-  const { reloadConfig, connState, deviceReport } = useApp();
+  const { reloadConfig, connState, deviceReport, config } = useApp();
   const [baseUrl, setBaseUrl] = useState('');
   const [apiKey, setApiKey] = useState('');
   const [qr, setQr] = useState<string | null>(null);
@@ -57,7 +57,16 @@ export default function SettingsPage() {
     await setGenerateShowWindow(on);
   };
 
+  // A device token belongs to the account key it was minted under, so a *different* key
+  // means the old token names a device on someone else's fleet. Dropping it here turns
+  // what would be a 401-then-recover cycle into a clean re-enrollment. Re-entering the
+  // same key keeps the enrollment, which is what avoids orphaning records server-side.
+  const forgetTokenIfKeyChanged = async (nextKey: string) => {
+    if (nextKey.trim() && nextKey.trim() !== config.apiKey) await clearDeviceToken();
+  };
+
   const save = async () => {
+    await forgetTokenIfKeyChanged(apiKey);
     await saveConfig({ baseUrl, apiKey });
     await reloadConfig();
     present({ message: 'Saved — reconnecting', duration: 1500, position: 'bottom' });
@@ -98,6 +107,7 @@ export default function SettingsPage() {
       }
       setBaseUrl(cfg.baseUrl);
       setApiKey(cfg.apiKey);
+      await forgetTokenIfKeyChanged(cfg.apiKey);
       await saveConfig({ baseUrl: cfg.baseUrl, apiKey: cfg.apiKey, secret: cfg.secret, vaultKey: cfg.vault });
       await reloadConfig();
       present({ message: 'Paired — reconnecting', duration: 1800, position: 'bottom' });
@@ -144,6 +154,15 @@ export default function SettingsPage() {
         <IonNote className="rb-note" style={{ display: 'block', marginTop: 10 }}>
           Used to connect to the Keeper channel and list your request history. Stored locally on this device. The token
           is sent via the WebSocket subprotocol, never in the URL.
+        </IonNote>
+
+        {/* Which credential this phone actually presents (issue #12). "Account key" is
+            not a fault — it is how every Keeper worked before per-device tokens, and how
+            this one keeps working against a service that doesn't issue them. */}
+        <IonNote className="rb-note" style={{ display: 'block', marginTop: 8 }}>
+          {config.deviceToken
+            ? 'Enrolled: this phone connects with its own token, so it can be revoked on its own without affecting your other devices or your API key.'
+            : 'This phone connects with the shared account key. It enrolls for a token of its own automatically if the service offers one.'}
         </IonNote>
 
         <IonButton expand="block" style={{ marginTop: 16 }} onClick={save}>

@@ -23,11 +23,11 @@ export default function CardsPage() {
   const [shown, setShown] = useState<Record<string, boolean>>({});
 
   const load = useCallback(async () => {
-    const { baseUrl, apiKey, vaultKey } = config;
+    const { baseUrl, apiKey, credential, vaultKey } = config;
     if (!baseUrl || !apiKey || !vaultKey) { setStatus('nokey'); setCards([]); return; }
     setStatus('loading');
     try {
-      const { data } = await pullVault({ baseUrl, apiKey }, vaultKey);
+      const { data } = await pullVault({ baseUrl, apiKey: credential }, vaultKey);
       const map = ((data as any) && (data as any).cards) || {};
       const live = Object.entries(map)
         .filter(([, e]) => e && !(e as Card).deleted)

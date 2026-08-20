@@ -4,7 +4,12 @@ import type { VaultKey } from './vaultCrypto';
 
 export interface Config {
   baseUrl: string;
-  apiKey: string;
+  apiKey: string; // the shared ACCOUNT key, as copied by the pairing QR
+  deviceToken: string; // this device's own token once enrolled (issue #12); '' before
+  // What to actually present to the service: the device token when we have one, else the
+  // account key. Kept separate from `apiKey` on purpose — the account key is still what
+  // Settings displays and what the pairing QR shares, and it stays the fallback forever.
+  credential: string;
   secret: string; // session secret (from pairing); '' when none is held
   vaultKey: VaultKey | null; // dedicated vault password (from pairing); null when none
 }
@@ -15,6 +20,9 @@ export interface Config {
 const LEGACY_KEY = 'rbkeeper.config'; // old combined blob (baseUrl + apiKey, plaintext)
 const URL_KEY = 'rbkeeper.baseUrl';
 const SECURE_API_KEY = 'rbkeeper.apiKey';
+// This device's own token (issue #12). Secure storage, never Preferences — it is a
+// credential, and one that can be revoked individually without touching the account key.
+const SECURE_DEVICE_TOKEN = 'rbkeeper.deviceToken';
 const SECURE_SECRET = 'rbkeeper.secret';
 const SECURE_VAULTKEY = 'rbkeeper.vaultKey';
 const DEFAULT_URL = 'https://rb.all-completed.com';
@@ -74,6 +82,7 @@ export async function loadConfig(): Promise<Config> {
     /* defaults */
   }
   let apiKey = await secureGet(SECURE_API_KEY);
+  const deviceToken = await secureGet(SECURE_DEVICE_TOKEN);
   const secret = await secureGet(SECURE_SECRET);
   const vaultKey = await getVaultKey();
 
@@ -100,7 +109,34 @@ export async function loadConfig(): Promise<Config> {
     }
   }
 
-  return { baseUrl: baseUrl || DEFAULT_URL, apiKey, secret, vaultKey };
+  return {
+    baseUrl: baseUrl || DEFAULT_URL,
+    apiKey,
+    deviceToken,
+    credential: deviceToken || apiKey,
+    secret,
+    vaultKey,
+  };
+}
+
+// -- this device's own token (issue #12) -------------------------------------------
+// Stored, read and cleared on its own, never through saveConfig(): re-pairing or editing
+// the account key in Settings must not silently drop an enrollment, and dropping an
+// enrollment must not touch the account key. That independence is the whole point of
+// per-device tokens.
+
+export async function loadDeviceToken(): Promise<string> {
+  return secureGet(SECURE_DEVICE_TOKEN);
+}
+
+export async function saveDeviceToken(token: string): Promise<boolean> {
+  return secureSet(SECURE_DEVICE_TOKEN, (token || '').trim());
+}
+
+// Forget the token — after a server-side revoke, or when the service says no record
+// backs it. The next connect goes out on the account key and re-enrolls if it can.
+export async function clearDeviceToken(): Promise<boolean> {
+  return secureSet(SECURE_DEVICE_TOKEN, '');
 }
 
 // `secret` / `vaultKey` are optional here: the manual settings form doesn't touch them,
