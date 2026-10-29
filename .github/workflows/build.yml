@@ -40,6 +40,11 @@ jobs:
 
       - name: Set up Android SDK
         uses: android-actions/setup-android@v3
+        # The default packages are 'tools platform-tools', and the legacy 'tools'
+        # package no longer exists (runner cmdline-tools 16.0: "Failed to find
+        # package 'tools'"). Gradle downloads the platform and build-tools itself.
+        with:
+          packages: platform-tools
 
       - uses: actions/setup-node@v4
         with:
