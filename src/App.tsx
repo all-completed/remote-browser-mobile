@@ -127,8 +127,9 @@ export default function App() {
     if (!baseUrl || !credential || !vaultKey) return;
     syncingVault.current = true;
     try {
-      // Merge only `fields`; pass every other collection (e.g. desktop-saved `cards`)
-      // through unchanged so this device never drops them.
+      // Merge only `fields`; pass every other collection (e.g. `cards`, which the Cards
+      // page edits through its own pull → merge → push) through unchanged so this device
+      // never drops them.
       await syncVault(
         { baseUrl, apiKey: credential },
         vaultKey,

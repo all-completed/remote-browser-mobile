@@ -116,8 +116,10 @@ export interface SyncOptions {
 
 // Pull → mergeBlob(remoteBlob) → push at the pulled version, retrying on 409. `mergeBlob`
 // merges the decrypted remote blob (all collections) with local state and returns the
-// blob to store. Mobile has no card store, so its mergeBlob touches `fields` and passes
-// `cards` through unchanged — that's what keeps desktop-saved cards from being dropped.
+// blob to store. Mobile keeps no local card store: the background sync's mergeBlob touches
+// `fields` and passes `cards` through unchanged, and a card edit (CardsPage) is applied to
+// the pulled blob itself (src/lib/cards.ts applyCardOp) — so neither drops what another
+// device wrote, and a 409 retry re-applies the edit on top of the newer blob.
 export async function syncVault(
   cfg: VaultConfig,
   key: VaultKey,
