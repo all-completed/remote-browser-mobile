@@ -38,8 +38,9 @@ export type VaultEntry =
 export interface VaultBlob {
   schema: number;
   fields: Record<string, VaultEntry>;
-  // Cards are a desktop-only feature; mobile preserves this collection untouched on sync.
-  cards?: Record<string, VaultEntry>;
+  // Saved payment cards (+ tombstones) and their meta ({ autofill, default, updated_at }),
+  // in the desktop Keeper's shape — edited on the Cards page through src/lib/cards.ts.
+  cards?: Record<string, any>;
   cardsMeta?: Record<string, any>;
   // Forward-compat: keep any future collections a newer client adds.
   [k: string]: any;

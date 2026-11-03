@@ -243,3 +243,26 @@ ion-card {
   flex-wrap: wrap;
   margin: 4px 4px 10px;
 }
+
+/* Card add/edit form (CardFormModal) — reuses the .rb-prompt overlay. */
+.rb-ffield { margin-top: 12px; min-width: 0; }
+.rb-ffield .rb-input {
+  --background: var(--rb-panel2);
+  --color: var(--rb-text);
+}
+.rb-fgrid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+}
+.rb-hint.rb-err { color: var(--rb-no); }
+.rb-check {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 18px;
+  font-size: 14px;
+  color: var(--rb-text);
+}
+/* The default card in the Cards list. */
+.rb-card-default { border: 1px solid rgba(52, 211, 153, 0.55); }

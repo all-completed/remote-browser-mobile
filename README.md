@@ -61,6 +61,20 @@ The model only ever learns the request *status*, never the value.
   `sha256(secret)`, `format = aesgcm-sha256-v1`); the session secret is provisioned
   by the desktop **pair QR**. `src/lib/vaultCrypto.ts` (WebCrypto) + `src/lib/vault.ts`
   (sync); `test/vault-interop.test.mjs` proves cross-device interop (`npm test`).
+- **Cards** — add, edit and delete saved payment cards and pick the **default** one,
+  in the same vault `cards` / `cardsMeta` shape the desktop Keeper's `src/cards.js`
+  merges: each card carries its own `updated_at`, a delete writes a
+  `{deleted: true, updated_at}` tombstone so the card doesn't come back on the next
+  sync, and `cardsMeta` (`autofill`, `default`, `updated_at`) is merged as one unit.
+  The add form takes holder, number (Luhn-checked), expiry, optional CVV (3 digits, 4
+  for Amex) and billing address, with **Make this my default card**; the first card,
+  or one added while there is no default, becomes it, and deleting the default hands it
+  to the next card. The phone keeps no card store: every change is applied to the
+  freshly pulled vault inside the pull → merge → push loop (409 retry), so cards,
+  fields and keys written by another device (desktop's per-site `domains`) survive.
+  Numbers and CVV stay masked until **Reveal**, a saved number/CVV is never put back
+  into an input, and nothing card-related is logged (`src/lib/cards.ts`,
+  `src/pages/CardsPage.tsx`; `test/cards.test.mjs` replays the desktop merge both ways).
 
 See [`../remote-browser-service/docs/keeper-protocol.md`](../remote-browser-service/docs/keeper-protocol.md)
 for the wire protocol.
